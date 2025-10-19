@@ -2,7 +2,7 @@
 Display formatter for GitHub statistics in neofetch style
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import shutil
 import sys
 import re
@@ -56,7 +56,10 @@ class DisplayFormatter:
         """Display only contribution graph for narrow terminals."""
         contrib_graph = stats.get('contribution_graph', [])
         graph_lines = self._get_contribution_graph_lines(
-            contrib_graph, username, width_constraint=self.terminal_width - 4
+            contrib_graph,
+            username,
+            width_constraint=self.terminal_width - 4,
+            include_sections=False
         )
         for line in graph_lines:
             print(line)
@@ -67,7 +70,10 @@ class DisplayFormatter:
         contrib_graph = stats.get('contribution_graph', [])
         graph_width = max(40, (self.terminal_width - 10) // 2)
         graph_lines = self._get_contribution_graph_lines(
-            contrib_graph, username, width_constraint=graph_width
+            contrib_graph,
+            username,
+            width_constraint=graph_width,
+            include_sections=False
         )
 
         info_lines = self._format_user_info_compact(user_data, stats)
@@ -107,7 +113,9 @@ class DisplayFormatter:
             issue_lines,
         ]
 
-        combined_sections = self._combine_section_grid(section_columns)
+        combined_sections = self._combine_section_grid(
+            section_columns, width_limit=graph_width
+        )
         if combined_sections:
             left_side.append("")
             left_side.extend(combined_sections)
@@ -403,17 +411,22 @@ class DisplayFormatter:
         lines = []
         lines.extend(self._section_header(title))
 
-        for label, data in groups:
+        label_width = max((len(label) for label, _ in groups), default=0) + 2
+
+        for idx, (label, data) in enumerate(groups):
             total = (data or {}).get('total_count', 0)
-            lines.append(f"{self._dashboard_label(label)} {total}")
+            label_text = self._dashboard_label(label, label_width)
+            lines.append(f"{label_text} {total}")
 
             items = (data or {}).get('items', [])[:3]
             if not items:
-                lines.append("  • —")
-                continue
+                lines.append("  • None")
+            else:
+                for item in items:
+                    lines.append(self._format_dashboard_item(item))
 
-            for item in items:
-                lines.append(self._format_dashboard_item(item))
+            if idx < len(groups) - 1:
+                lines.append("")
 
         return lines
 
@@ -425,8 +438,8 @@ class DisplayFormatter:
         return padded
 
     def _format_dashboard_item(self, item: Dict[str, Any],
-                               title_width: int = 32,
-                               repo_width: int = 18) -> str:
+                               title_width: int = 24,
+                               repo_width: int = 16) -> str:
         title = self._truncate_text(item.get('title', ''), title_width)
         repo = item.get('repo', '')
         repo_part = ''
@@ -434,8 +447,6 @@ class DisplayFormatter:
             repo_part = f" ({self._truncate_text(repo, repo_width)})"
 
         bullet = f"• {title}{repo_part}"
-        if self.enable_color:
-            bullet = self._colorize(bullet, 'muted')
         return f"  {bullet}"
 
     def _truncate_text(self, text: str, max_width: int) -> str:
@@ -719,7 +730,8 @@ class DisplayFormatter:
             return []
         return weeks_data[-limit:] if len(weeks_data) > limit else weeks_data
 
-    def _combine_section_grid(self, columns: list) -> list:
+    def _combine_section_grid(self, columns: list,
+                              width_limit: Optional[int] = None) -> list:
         """Combine multiple sections into aligned columns."""
         active_columns = [col for col in columns if col]
         if not active_columns:
@@ -727,25 +739,52 @@ class DisplayFormatter:
 
         indent = "    "
         gap = "   "
+        gap_width = len(gap)
+        indent_width = len(indent)
 
-        widths = [
-            max((self._display_width(line) for line in col), default=0)
+        column_info = [
+            (col, max((self._display_width(line) for line in col), default=0))
             for col in active_columns
         ]
 
-        max_rows = max(len(col) for col in active_columns)
+        rows = []
+        current_row = []
+        current_width = indent_width
+
+        for col, width in column_info:
+            projected = width if not current_row else width + gap_width
+            if (width_limit is not None and current_row and
+                    current_width + projected > width_limit):
+                rows.append(current_row)
+                current_row = []
+                current_width = indent_width
+
+            if current_row:
+                current_width += gap_width + width
+            else:
+                current_width += width
+
+            current_row.append((col, width))
+
+        if current_row:
+            rows.append(current_row)
+
         combined = []
+        for row_idx, row in enumerate(rows):
+            max_lines = max(len(col) for col, _ in row)
+            for line_idx in range(max_lines):
+                parts = []
+                for col_idx, (col, width) in enumerate(row):
+                    text = col[line_idx] if line_idx < len(col) else ""
+                    pad_width = width - self._display_width(text)
+                    pad = " " * max(0, pad_width)
+                    spacer = gap if col_idx < len(row) - 1 else ""
+                    parts.append(f"{text}{pad}{spacer}")
 
-        for row in range(max_rows):
-            parts = []
-            for idx, col in enumerate(active_columns):
-                text = col[row] if row < len(col) else ""
-                pad_width = widths[idx] - self._display_width(text)
-                pad = " " * max(0, pad_width)
-                parts.append(f"{text}{pad}")
+                combined.append(indent + "".join(parts).rstrip())
 
-            line = indent + gap.join(parts).rstrip()
-            combined.append(line)
+            if row_idx < len(rows) - 1:
+                combined.append("")
 
         return combined
 
