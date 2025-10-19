@@ -166,6 +166,11 @@ Using the GitHub CLI (gh) instead of direct API calls provides several benefits:
 - ✅ **Better security** - Credentials managed by gh CLI
 - ✅ **Simpler setup** - Just run `gh auth login`
 
+## Acknowledgements
+
+- Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118.
+- Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo.
+
 ## License
 
 MIT
