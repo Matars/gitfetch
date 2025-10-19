@@ -90,7 +90,7 @@ class DisplayFormatter:
             contrib_graph, username, width_constraint=graph_width
         )
 
-        info_lines = self._format_user_info(user_data)
+        info_lines = self._format_user_info(user_data, stats)
         stat_lines = self._format_stats(stats)
 
         all_lines = info_lines + stat_lines
@@ -169,9 +169,7 @@ class DisplayFormatter:
         # Add achievements section
         achievements = self._build_achievements(recent_weeks)
         if achievements:
-            lines.extend(["", *achievements])
-
-        lines.append("")
+            lines.extend(achievements)
 
         return lines
 
@@ -180,43 +178,54 @@ class DisplayFormatter:
         """Format minimal user info for compact layout."""
         lines = []
 
-        login = user_data.get('login', 'unknown')
-        lines.append(self._colorize(login, "accent"))
+        name = user_data.get('name') or user_data.get('login', 'unknown')
+        total_contributions = stats.get('total_contributions')
+        if total_contributions is None:
+            total_contributions = self._calculate_total_contributions(
+                stats.get('contribution_graph', [])
+            )
 
-        if user_data.get('name'):
-            lines.append(user_data['name'])
+        headline = f"{name} - {total_contributions:,} contributions this year"
+        lines.append(self._colorize(headline, "accent"))
 
-        if user_data.get('bio'):
-            bio = user_data['bio'][:60]
-            lines.append(self._colorize(bio, 'muted'))
+        bio = user_data.get('bio')
+        if bio:
+            trimmed = bio.strip().replace('\n', ' ')[:60]
+            lines.append(self._colorize(trimmed, 'muted'))
 
-        lines.append("")
         lines.append(f"Repos: {stats.get('total_repos', 0)}")
         lines.append(f"Stars: {stats.get('total_stars', 0)}")
 
         return lines
 
-    def _format_user_info(self, user_data: Dict[str, Any]) -> list:
+    def _format_user_info(self, user_data: Dict[str, Any],
+                          stats: Dict[str, Any]) -> list:
         """
         Format user information lines.
 
         Args:
             user_data: User profile data
+            stats: User statistics data
 
         Returns:
             List of formatted info strings
         """
         lines = []
 
-        login = user_data.get('login', 'unknown')
-        lines.append(self._colorize(login, "accent"))
-        lines.append(self._colorize("─" * len(login), "muted"))
+        name = user_data.get('name') or user_data.get('login', 'unknown')
+        total_contributions = stats.get('total_contributions')
+        if total_contributions is None:
+            total_contributions = self._calculate_total_contributions(
+                stats.get('contribution_graph', [])
+            )
+
+        user_line = f"{name} - {total_contributions:,} contributions this year"
+        lines.append(self._colorize(user_line, "accent"))
+        lines.append(self._colorize("─" * len(user_line), "muted"))
 
         def add_line(label: str, value: str) -> None:
             if value:
                 lines.append(f"{self._label(label)} {value}")
-
-        add_line('Name', user_data.get('name'))
 
         bio = user_data.get('bio', '')
         if bio:
@@ -225,8 +234,6 @@ class DisplayFormatter:
 
         add_line('Company', user_data.get('company'))
         add_line('Website', user_data.get('blog'))
-
-        lines.append("")
 
         return lines
 
@@ -240,7 +247,7 @@ class DisplayFormatter:
         Returns:
             List of formatted stat strings
         """
-        lines = [""]
+        lines = []
         lines.extend(self._section_header("Overview"))
 
         total_repos = stats.get('total_repos', 0)
@@ -265,8 +272,6 @@ class DisplayFormatter:
             for lang, percentage in sorted_langs:
                 lines.append(self._format_language_line(lang, percentage))
 
-        lines.append("")
-
         return lines
 
     def _render_progress_bar(self, percentage: float,
@@ -285,6 +290,23 @@ class DisplayFormatter:
             filled_segment = self._colorize(filled_segment, 'green')
 
         return f"[{filled_segment}{empty_segment}]"
+
+    def _render_progress_bar_no_brackets(self, percentage: float,
+                                         width: int = 24) -> str:
+        """Render a progress bar without brackets for percentage values."""
+        width = max(width, 1)
+        capped_percentage = max(0.0, min(percentage, 100.0))
+        filled = int(round((capped_percentage / 100) * width))
+        filled = min(filled, width)
+        empty = width - filled
+
+        filled_segment = "█" * filled
+        empty_segment = "░" * empty
+
+        if self.enable_color and filled_segment:
+            filled_segment = self._colorize(filled_segment, 'green')
+
+        return f"{filled_segment}{empty_segment}"
 
     def _section_header(self, title: str) -> list:
         """Create a stylized section header."""
@@ -314,17 +336,13 @@ class DisplayFormatter:
         if self.enable_color:
             language_label = self._colorize(language_label, 'bold')
 
-        bar = self._render_progress_bar(percentage)
+        bar = self._render_progress_bar_no_brackets(percentage)
         return f"  {language_label} {bar} {percentage:5.1f}%"
 
     def _graph_header(self, username: str, total_contributions: int) -> list:
         """Return standardized header lines for the contribution graph."""
-        username_line = self._colorize(username, 'accent')
-        summary_text = (
-            f"{total_contributions:,} contributions in the last year"
-        )
-        summary_line = self._colorize(summary_text, 'muted')
-        return [username_line, summary_line, ""]
+        # Header intentionally blank; graph should start with month labels.
+        return []
 
     def _calculate_max_weeks(self, width_available: int) -> int:
         """Calculate how many weeks fit in available width."""
@@ -476,11 +494,12 @@ class DisplayFormatter:
         )
 
         if achievements_list:
-            lines.append(self._colorize("ACHIEVEMENTS", "accent"))
-            lines.append(self._colorize("─" * 12, "muted"))
+            indent = "    "
+            lines.append(f"{indent}{self._colorize('ACHIEVEMENTS', 'accent')}")
+            lines.append(f"{indent}{self._colorize('─' * 12, 'muted')}")
 
             for achievement in achievements_list:
-                lines.append(f"  {achievement}")
+                lines.append(f"{indent}{achievement}")
 
         return lines
 
