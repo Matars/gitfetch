@@ -97,8 +97,17 @@ class DisplayFormatter:
 
         achievements = self._build_achievements(recent_weeks)
         overview_lines = self._format_overview(stats)
-        combined_sections = self._combine_section_columns(achievements,
-                                                          overview_lines)
+        pull_request_lines = self._format_pull_requests(stats)
+        issue_lines = self._format_issues(stats)
+
+        section_columns = [
+            achievements,
+            overview_lines,
+            pull_request_lines,
+            issue_lines,
+        ]
+
+        combined_sections = self._combine_section_grid(section_columns)
         if combined_sections:
             left_side.append("")
             left_side.extend(combined_sections)
@@ -298,6 +307,26 @@ class DisplayFormatter:
 
         return lines
 
+    def _format_pull_requests(self, stats: Dict[str, Any]) -> list:
+        """Format pull request dashboard section."""
+        pr_data = stats.get('pull_requests') or {}
+        groups = [
+            ('Awaiting Review', pr_data.get('awaiting_review', {})),
+            ('Your Open PRs', pr_data.get('open', {})),
+            ('Mentions', pr_data.get('mentions', {})),
+        ]
+        return self._format_dashboard_section('Pull Requests', groups)
+
+    def _format_issues(self, stats: Dict[str, Any]) -> list:
+        """Format issues dashboard section."""
+        issue_data = stats.get('issues') or {}
+        groups = [
+            ('Assigned', issue_data.get('assigned', {})),
+            ('Created (open)', issue_data.get('created', {})),
+            ('Mentions', issue_data.get('mentions', {})),
+        ]
+        return self._format_dashboard_section('Issues', groups)
+
     def _render_progress_bar(self, percentage: float,
                              width: int = 24) -> str:
         """Render a progress bar for percentage values."""
@@ -364,6 +393,62 @@ class DisplayFormatter:
 
         bar = self._render_progress_bar_no_brackets(percentage)
         return f"{padded_label} {bar} {percentage:5.1f}%"
+
+    def _format_dashboard_section(self, title: str,
+                                  groups: list) -> list:
+        """Format a dashboard section with grouped items."""
+        if not groups:
+            return []
+
+        lines = []
+        lines.extend(self._section_header(title))
+
+        for label, data in groups:
+            total = (data or {}).get('total_count', 0)
+            lines.append(f"{self._dashboard_label(label)} {total}")
+
+            items = (data or {}).get('items', [])[:3]
+            if not items:
+                lines.append("  • —")
+                continue
+
+            for item in items:
+                lines.append(self._format_dashboard_item(item))
+
+        return lines
+
+    def _dashboard_label(self, text: str, width: int = 20) -> str:
+        label = f"{text}:"
+        padded = f"{label:<{width}}"
+        if self.enable_color:
+            return self._colorize(padded, 'bold')
+        return padded
+
+    def _format_dashboard_item(self, item: Dict[str, Any],
+                               title_width: int = 32,
+                               repo_width: int = 18) -> str:
+        title = self._truncate_text(item.get('title', ''), title_width)
+        repo = item.get('repo', '')
+        repo_part = ''
+        if repo:
+            repo_part = f" ({self._truncate_text(repo, repo_width)})"
+
+        bullet = f"• {title}{repo_part}"
+        if self.enable_color:
+            bullet = self._colorize(bullet, 'muted')
+        return f"  {bullet}"
+
+    def _truncate_text(self, text: str, max_width: int) -> str:
+        if self._display_width(text) <= max_width:
+            return text
+
+        ellipsis = '…'
+        truncated = ''
+        for char in text:
+            if self._display_width(truncated + char + ellipsis) > max_width:
+                break
+            truncated += char
+        return truncated + ellipsis
 
     def _graph_header(self, username: str, total_contributions: int) -> list:
         """Return standardized header lines for the contribution graph."""
@@ -634,32 +719,33 @@ class DisplayFormatter:
             return []
         return weeks_data[-limit:] if len(weeks_data) > limit else weeks_data
 
-    def _combine_section_columns(self, left_lines: list,
-                                 right_lines: list) -> list:
-        """Combine two sections into side-by-side columns."""
-        if not left_lines and not right_lines:
+    def _combine_section_grid(self, columns: list) -> list:
+        """Combine multiple sections into aligned columns."""
+        active_columns = [col for col in columns if col]
+        if not active_columns:
             return []
 
         indent = "    "
-        gap = 4
+        gap = "   "
 
-        left_width = max(
-            (self._display_width(line) for line in left_lines), default=0
-        )
+        widths = [
+            max((self._display_width(line) for line in col), default=0)
+            for col in active_columns
+        ]
 
+        max_rows = max(len(col) for col in active_columns)
         combined = []
-        max_rows = max(len(left_lines), len(right_lines))
 
-        for idx in range(max_rows):
-            left = left_lines[idx] if idx < len(left_lines) else ""
-            right = right_lines[idx] if idx < len(right_lines) else ""
+        for row in range(max_rows):
+            parts = []
+            for idx, col in enumerate(active_columns):
+                text = col[row] if row < len(col) else ""
+                pad_width = widths[idx] - self._display_width(text)
+                pad = " " * max(0, pad_width)
+                parts.append(f"{text}{pad}")
 
-            left_len = self._display_width(left)
-            padding = " " * max(0, left_width - left_len)
-            separator = " " * gap if right else ""
-
-            combined_line = f"{indent}{left}{padding}{separator}{right}"
-            combined.append(combined_line)
+            line = indent + gap.join(parts).rstrip()
+            combined.append(line)
 
         return combined
 

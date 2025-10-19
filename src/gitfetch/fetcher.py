@@ -106,12 +106,38 @@ class GitHubFetcher:
         # Fetch contribution graph
         contrib_graph = self._fetch_contribution_graph(username)
 
+        pull_requests = {
+            'awaiting_review': self._search_items(
+                f'is:pr+state:open+review-requested:{username}'
+            ),
+            'open': self._search_items(
+                f'is:pr+state:open+author:{username}'
+            ),
+            'mentions': self._search_items(
+                f'is:pr+state:open+mentions:{username}'
+            ),
+        }
+
+        issues = {
+            'assigned': self._search_items(
+                f'is:issue+state:open+assignee:{username}'
+            ),
+            'created': self._search_items(
+                f'is:issue+state:open+author:{username}'
+            ),
+            'mentions': self._search_items(
+                f'is:issue+state:open+mentions:{username}'
+            ),
+        }
+
         return {
             'total_stars': total_stars,
             'total_forks': total_forks,
             'total_repos': len(repos),
             'languages': languages,
             'contribution_graph': contrib_graph,
+            'pull_requests': pull_requests,
+            'issues': issues,
         }
 
     def _fetch_repos(self, username: str) -> list:
@@ -129,7 +155,10 @@ class GitHubFetcher:
         per_page = 100
 
         while True:
-            endpoint = f'/users/{username}/repos?page={page}&per_page={per_page}&type=owner&sort=updated'
+            endpoint = (
+                f'/users/{username}/repos?page={page}'
+                f'&per_page={per_page}&type=owner&sort=updated'
+            )
             data = self._gh_api(endpoint)
 
             if not data:
@@ -173,6 +202,51 @@ class GitHubFetcher:
         }
 
         return language_percentages
+
+    def _search_items(self, query: str, per_page: int = 5) -> Dict[str, Any]:
+        """Search issues and PRs using GitHub's search API."""
+        try:
+            result = subprocess.run(
+                [
+                    'gh', 'api', '/search/issues',
+                    '-f', f'q={query}',
+                    '-f', f'per_page={per_page}'
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode != 0:
+                return {'total_count': 0, 'items': []}
+
+            data = json.loads(result.stdout)
+            items = []
+            for item in data.get('items', [])[:per_page]:
+                repo = self._extract_repo_name(item.get('repository_url', ''))
+                items.append({
+                    'title': item.get('title', ''),
+                    'repo': repo,
+                    'url': item.get('html_url', ''),
+                    'number': item.get('number')
+                })
+
+            return {
+                'total_count': data.get('total_count', 0),
+                'items': items
+            }
+        except (subprocess.TimeoutExpired, json.JSONDecodeError):
+            return {'total_count': 0, 'items': []}
+
+    @staticmethod
+    def _extract_repo_name(repo_url: str) -> str:
+        """Extract owner/repo from a repository API URL."""
+        if not repo_url:
+            return ""
+
+        parts = repo_url.rstrip('/').split('/')
+        if len(parts) >= 2:
+            return f"{parts[-2]}/{parts[-1]}"
+        return repo_url
 
     def _get_rate_limit(self) -> Dict[str, Any]:
         """
