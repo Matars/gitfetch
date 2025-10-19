@@ -6,6 +6,7 @@ from typing import Dict, Any
 import shutil
 import sys
 import re
+import unicodedata
 from datetime import datetime
 
 
@@ -75,7 +76,7 @@ class DisplayFormatter:
         max_lines = max(len(graph_lines), len(info_lines))
         for i in range(max_lines):
             graph_part = (graph_lines[i] if i < len(graph_lines) else "")
-            graph_len = len(self._strip_ansi(graph_part))
+            graph_len = self._display_width(graph_part)
             padding = " " * max(0, graph_width - graph_len)
 
             info_part = (info_lines[i] if i < len(info_lines) else "")
@@ -112,7 +113,7 @@ class DisplayFormatter:
 
         # Display side-by-side
         max_left_width = max(
-            len(self._strip_ansi(line)) for line in left_side
+            self._display_width(line) for line in left_side
         ) if left_side else 0
 
         for i in range(max(len(left_side), len(right_side))):
@@ -121,7 +122,7 @@ class DisplayFormatter:
             else:
                 left_raw = ""
 
-            raw_length = len(self._strip_ansi(left_raw))
+            raw_length = self._display_width(left_raw)
             padding = " " * max(0, max_left_width - raw_length)
             left_part = f"{left_raw}{padding}"
 
@@ -524,13 +525,13 @@ class DisplayFormatter:
             lines.append(self._colorize('─' * len(title), 'muted'))
 
             label_width = max(
-                len(self._strip_ansi(f"{entry['icon']} {entry['label']}"))
+                self._display_width(f"{entry['icon']} {entry['label']}")
                 for entry in achievements_list
             )
 
             for entry in achievements_list:
                 icon_label = f"{entry['icon']} {entry['label']}"
-                stripped_len = len(self._strip_ansi(icon_label))
+                stripped_len = self._display_width(icon_label)
                 padding = " " * max(0, label_width - stripped_len)
                 value = entry['value']
                 lines.append(f"{icon_label}{padding}  {value}")
@@ -643,7 +644,7 @@ class DisplayFormatter:
         gap = 4
 
         left_width = max(
-            (len(self._strip_ansi(line)) for line in left_lines), default=0
+            (self._display_width(line) for line in left_lines), default=0
         )
 
         combined = []
@@ -653,7 +654,7 @@ class DisplayFormatter:
             left = left_lines[idx] if idx < len(left_lines) else ""
             right = right_lines[idx] if idx < len(right_lines) else ""
 
-            left_len = len(self._strip_ansi(left))
+            left_len = self._display_width(left)
             padding = " " * max(0, left_width - left_len)
             separator = " " * gap if right else ""
 
@@ -799,3 +800,23 @@ class DisplayFormatter:
 
         ansi_pattern = re.compile(r'\033\[[0-9;]*m')
         return ansi_pattern.sub('', text)
+
+    def _display_width(self, text: str) -> int:
+        """Calculate display width accounting for wide characters."""
+        if not text:
+            return 0
+
+        clean = self._strip_ansi(text)
+        width = 0
+        for char in clean:
+            if unicodedata.combining(char):
+                continue
+
+            east_asian = unicodedata.east_asian_width(char)
+            if east_asian in ('F', 'W'):
+                width += 2
+            elif east_asian == 'A':
+                width += 1  # Treat ambiguous width as narrow for western fonts
+            else:
+                width += 1
+        return width
