@@ -1,0 +1,2 @@
+# No Python dependencies required
+# Requires GitHub CLI (gh) to be installed and authenticated
