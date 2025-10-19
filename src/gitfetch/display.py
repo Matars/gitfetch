@@ -85,22 +85,37 @@ class DisplayFormatter:
                       stats: Dict[str, Any]) -> None:
         """Display full layout with graph and all info sections."""
         contrib_graph = stats.get('contribution_graph', [])
+        recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(50, (self.terminal_width - 10) // 2)
         left_side = self._get_contribution_graph_lines(
-            contrib_graph, username, width_constraint=graph_width
+            contrib_graph,
+            username,
+            width_constraint=graph_width,
+            include_sections=False
         )
 
-        info_lines = self._format_user_info(user_data, stats)
-        stat_lines = self._format_stats(stats)
+        achievements = self._build_achievements(recent_weeks)
+        overview_lines = self._format_overview(stats)
+        combined_sections = self._combine_section_columns(achievements,
+                                                          overview_lines)
+        if combined_sections:
+            left_side.append("")
+            left_side.extend(combined_sections)
 
-        all_lines = info_lines + stat_lines
+        info_lines = self._format_user_info(user_data, stats)
+        language_lines = self._format_languages(stats)
+
+        right_side = list(info_lines)
+        if language_lines:
+            right_side.append("")
+            right_side.extend(language_lines)
 
         # Display side-by-side
         max_left_width = max(
             len(self._strip_ansi(line)) for line in left_side
         ) if left_side else 0
 
-        for i in range(max(len(left_side), len(all_lines))):
+        for i in range(max(len(left_side), len(right_side))):
             if i < len(left_side):
                 left_raw = left_side[i]
             else:
@@ -110,12 +125,13 @@ class DisplayFormatter:
             padding = " " * max(0, max_left_width - raw_length)
             left_part = f"{left_raw}{padding}"
 
-            info_part = all_lines[i] if i < len(all_lines) else ""
+            info_part = right_side[i] if i < len(right_side) else ""
             print(f"{left_part}  {info_part}")
 
     def _get_contribution_graph_lines(self, weeks_data: list,
                                       username: str,
-                                      width_constraint: int = None) -> list:
+                                      width_constraint: int = None,
+                                      include_sections: bool = True) -> list:
         """
         Get contribution graph as lines for display.
 
@@ -127,7 +143,7 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
-        recent_weeks = weeks_data[-52:] if len(weeks_data) > 52 else weeks_data
+        recent_weeks = self._get_recent_weeks(weeks_data)
         total_contribs = self._calculate_total_contributions(recent_weeks)
 
         header_lines = self._graph_header(username, total_contribs)
@@ -163,13 +179,12 @@ class DisplayFormatter:
         for row_idx, row in enumerate(day_rows):
             lines.append(f"    {''.join(row)}")
 
-        legend = self._build_legend_spaced()
-        lines.extend(["", legend])
-
         # Add achievements section
-        achievements = self._build_achievements(recent_weeks)
-        if achievements:
-            lines.extend(achievements)
+        if include_sections:
+            achievements = self._build_achievements(recent_weeks)
+            if achievements:
+                lines.append("")
+                lines.extend(achievements)
 
         return lines
 
@@ -219,9 +234,19 @@ class DisplayFormatter:
                 stats.get('contribution_graph', [])
             )
 
-        user_line = f"{name} - {total_contributions:,} contributions this year"
-        lines.append(self._colorize(user_line, "accent"))
-        lines.append(self._colorize("─" * len(user_line), "muted"))
+        # Format user line with colored segments
+        contrib_str = self._colorize(f"{total_contributions:,}", 'orange')
+        name_str = self._colorize(name, 'header')
+        phrase_str = self._colorize('contributions this year', 'header')
+        user_line = f"{name_str} - {contrib_str} {phrase_str}"
+        lines.append(user_line)
+
+        plain_line = (
+            f"{name} - {total_contributions:,} contributions this year"
+        )
+        lines.append(
+            self._colorize("─" * len(plain_line), "muted")
+        )
 
         def add_line(label: str, value: str) -> None:
             if value:
@@ -237,16 +262,8 @@ class DisplayFormatter:
 
         return lines
 
-    def _format_stats(self, stats: Dict[str, Any]) -> list:
-        """
-        Format statistics lines.
-
-        Args:
-            stats: User statistics data
-
-        Returns:
-            List of formatted stat strings
-        """
+    def _format_overview(self, stats: Dict[str, Any]) -> list:
+        """Format overview statistics for left column."""
         lines = []
         lines.extend(self._section_header("Overview"))
 
@@ -258,19 +275,25 @@ class DisplayFormatter:
         lines.append(self._format_stat_line('Stars', total_stars))
         lines.append(self._format_stat_line('Forks', total_forks))
 
+        return lines
+
+    def _format_languages(self, stats: Dict[str, Any]) -> list:
+        """Format language distribution for right column."""
         languages = stats.get('languages', {})
-        if languages:
-            lines.append("")
-            lines.extend(self._section_header("Top Languages"))
+        if not languages:
+            return []
 
-            sorted_langs = sorted(
-                languages.items(),
-                key=lambda item: item[1],
-                reverse=True
-            )[:5]
+        lines = []
+        lines.extend(self._section_header("Top Languages"))
 
-            for lang, percentage in sorted_langs:
-                lines.append(self._format_language_line(lang, percentage))
+        sorted_langs = sorted(
+            languages.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )[:5]
+
+        for lang, percentage in sorted_langs:
+            lines.append(self._format_language_line(lang, percentage))
 
         return lines
 
@@ -313,7 +336,7 @@ class DisplayFormatter:
         heading = title.upper()
         underline = "─" * len(heading)
         return [
-            self._colorize(heading, 'accent'),
+            self._colorize(heading, 'header'),
             self._colorize(underline, 'muted')
         ]
 
@@ -332,12 +355,14 @@ class DisplayFormatter:
     def _format_language_line(self, language: str,
                               percentage: float) -> str:
         """Format language entry with progress bar."""
-        language_label = f"{language:<12}"
+        # Use consistent padding without relying on label() which adds colors
+        lang_label = f"{language}:"
+        padded_label = f"{lang_label:<12}"
         if self.enable_color:
-            language_label = self._colorize(language_label, 'bold')
+            padded_label = self._colorize(padded_label, 'bold')
 
         bar = self._render_progress_bar_no_brackets(percentage)
-        return f"  {language_label} {bar} {percentage:5.1f}%"
+        return f"{padded_label} {bar} {percentage:5.1f}%"
 
     def _graph_header(self, username: str, total_contributions: int) -> list:
         """Return standardized header lines for the contribution graph."""
@@ -489,17 +514,26 @@ class DisplayFormatter:
         total_contribs = self._calculate_total_contributions(weeks_data)
 
         # Determine achievements
-        achievements_list = self._get_achievements(
+        achievements_list = self._get_achievement_entries(
             current_streak, max_streak, total_contribs
         )
 
         if achievements_list:
-            indent = "    "
-            lines.append(f"{indent}{self._colorize('ACHIEVEMENTS', 'accent')}")
-            lines.append(f"{indent}{self._colorize('─' * 12, 'muted')}")
+            title = 'ACHIEVEMENTS'
+            lines.append(self._colorize(title, 'header'))
+            lines.append(self._colorize('─' * len(title), 'muted'))
 
-            for achievement in achievements_list:
-                lines.append(f"{indent}{achievement}")
+            label_width = max(
+                len(self._strip_ansi(f"{entry['icon']} {entry['label']}"))
+                for entry in achievements_list
+            )
+
+            for entry in achievements_list:
+                icon_label = f"{entry['icon']} {entry['label']}"
+                stripped_len = len(self._strip_ansi(icon_label))
+                padding = " " * max(0, label_width - stripped_len)
+                value = entry['value']
+                lines.append(f"{icon_label}{padding}  {value}")
 
         return lines
 
@@ -534,47 +568,99 @@ class DisplayFormatter:
 
         return current_streak, max_streak
 
-    def _get_achievements(self, current_streak: int, max_streak: int,
-                          total_contribs: int) -> list:
-        """Generate achievement badges based on stats."""
-        achievements = []
+    def _get_achievement_entries(self, current_streak: int, max_streak: int,
+                                 total_contribs: int) -> list:
+        """Generate structured achievement entries for display."""
+        entries = []
+
+        def color_icon(icon: str, color: str) -> str:
+            if not self.enable_color:
+                return icon
+            return self._colorize(icon, color)
 
         # Streak achievements
         if current_streak > 0:
-            fire = self._colorize("🔥", "red") if self.enable_color else "🔥"
-            streak_text = (
-                f"{fire} Current Streak: {current_streak} day"
-                f"{'s' if current_streak != 1 else ''}"
-            )
-            achievements.append(streak_text)
+            entries.append({
+                'icon': color_icon("🔥", 'red'),
+                'label': 'Current Streak',
+                'value': (
+                    f"{current_streak} day"
+                    f"{'s' if current_streak != 1 else ''}"
+                )
+            })
 
         if max_streak > 0:
-            badge = self._colorize("⭐", "yellow") if self.enable_color else "⭐"
-            max_text = (
-                f"{badge} Best Streak: {max_streak} day"
-                f"{'s' if max_streak != 1 else ''}"
-            )
-            achievements.append(max_text)
+            entries.append({
+                'icon': color_icon("⭐", 'yellow'),
+                'label': 'Best Streak',
+                'value': (
+                    f"{max_streak} day"
+                    f"{'s' if max_streak != 1 else ''}"
+                )
+            })
 
-        # Contribution milestones
+        # Contribution milestones (shortened values for consistent width)
         if total_contribs >= 10000:
-            badge = self._colorize("💎", "magenta") \
-                if self.enable_color else "💎"
-            achievements.append(f"{badge} 10,000+ Contributions")
+            entries.append({
+                'icon': color_icon("💎", 'magenta'),
+                'label': 'Contributions',
+                'value': '10k+'
+            })
         elif total_contribs >= 5000:
-            badge = self._colorize("👑", "yellow") \
-                if self.enable_color else "👑"
-            achievements.append(f"{badge} 5,000+ Contributions")
+            entries.append({
+                'icon': color_icon("👑", 'yellow'),
+                'label': 'Contributions',
+                'value': '5k+'
+            })
         elif total_contribs >= 1000:
-            badge = self._colorize("🎖️", "cyan") \
-                if self.enable_color else "🎖️"
-            achievements.append(f"{badge} 1,000+ Contributions")
+            entries.append({
+                'icon': color_icon("🎖️", 'cyan'),
+                'label': 'Contributions',
+                'value': '1k+'
+            })
         elif total_contribs >= 100:
-            badge = self._colorize("🏆", "yellow") \
-                if self.enable_color else "🏆"
-            achievements.append(f"{badge} 100+ Contributions")
+            entries.append({
+                'icon': color_icon("🏆", 'yellow'),
+                'label': 'Contributions',
+                'value': '100+'
+            })
 
-        return achievements
+        return entries
+
+    def _get_recent_weeks(self, weeks_data: list, limit: int = 52) -> list:
+        """Return the most recent weeks up to the specified limit."""
+        if not weeks_data:
+            return []
+        return weeks_data[-limit:] if len(weeks_data) > limit else weeks_data
+
+    def _combine_section_columns(self, left_lines: list,
+                                 right_lines: list) -> list:
+        """Combine two sections into side-by-side columns."""
+        if not left_lines and not right_lines:
+            return []
+
+        indent = "    "
+        gap = 4
+
+        left_width = max(
+            (len(self._strip_ansi(line)) for line in left_lines), default=0
+        )
+
+        combined = []
+        max_rows = max(len(left_lines), len(right_lines))
+
+        for idx in range(max_rows):
+            left = left_lines[idx] if idx < len(left_lines) else ""
+            right = right_lines[idx] if idx < len(right_lines) else ""
+
+            left_len = len(self._strip_ansi(left))
+            padding = " " * max(0, left_width - left_len)
+            separator = " " * gap if right else ""
+
+            combined_line = f"{indent}{left}{padding}{separator}{right}"
+            combined.append(combined_line)
+
+        return combined
 
     def _calculate_total_contributions(self, weeks_data: list) -> int:
         """Sum total contributions across all provided weeks."""
@@ -618,7 +704,9 @@ class DisplayFormatter:
             'magenta': '\033[95m',
             'cyan': '\033[96m',
             'white': '\033[97m',
+            'orange': '\033[38;2;255;165;0m',
             'accent': '\033[1m',
+            'header': '\033[38;2;118;215;161m',
             'muted': '\033[2m'
         }
 
