@@ -92,7 +92,6 @@ class DisplayFormatter:
                       stats: Dict[str, Any]) -> None:
         """Display full layout with graph and all info sections."""
         contrib_graph = stats.get('contribution_graph', [])
-        recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(50, (self.terminal_width - 10) // 2)
         left_side = self._get_contribution_graph_lines(
             contrib_graph,
@@ -101,14 +100,10 @@ class DisplayFormatter:
             include_sections=False
         )
 
-        achievements = self._build_achievements(recent_weeks)
-        overview_lines = self._format_overview(stats)
         pull_request_lines = self._format_pull_requests(stats)
         issue_lines = self._format_issues(stats)
 
         section_columns = [
-            achievements,
-            overview_lines,
             pull_request_lines,
             issue_lines,
         ]

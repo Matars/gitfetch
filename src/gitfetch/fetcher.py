@@ -106,27 +106,30 @@ class GitHubFetcher:
         # Fetch contribution graph
         contrib_graph = self._fetch_contribution_graph(username)
 
+        # Use @me for search queries if this is the authenticated user
+        search_username = self._get_search_username(username)
+
         pull_requests = {
             'awaiting_review': self._search_items(
-                f'is:pr+state:open+review-requested:{username}'
+                f'is:pr state:open review-requested:{search_username}'
             ),
             'open': self._search_items(
-                f'is:pr+state:open+author:{username}'
+                f'is:pr state:open author:{search_username}'
             ),
             'mentions': self._search_items(
-                f'is:pr+state:open+mentions:{username}'
+                f'is:pr state:open mentions:{search_username}'
             ),
         }
 
         issues = {
             'assigned': self._search_items(
-                f'is:issue+state:open+assignee:{username}'
+                f'is:issue state:open assignee:{search_username}'
             ),
             'created': self._search_items(
-                f'is:issue+state:open+author:{username}'
+                f'is:issue state:open author:{search_username}'
             ),
             'mentions': self._search_items(
-                f'is:issue+state:open+mentions:{username}'
+                f'is:issue state:open mentions:{search_username}'
             ),
         }
 
@@ -139,6 +142,27 @@ class GitHubFetcher:
             'pull_requests': pull_requests,
             'issues': issues,
         }
+
+    def _get_search_username(self, username: str) -> str:
+        """
+        Get the username to use for search queries.
+        Uses @me for the authenticated user, otherwise the provided username.
+
+        Args:
+            username: The username to check
+
+        Returns:
+            Username for search queries (@me or the actual username)
+        """
+        try:
+            # Get the authenticated user's login
+            auth_user = self._gh_api('/user')
+            if auth_user.get('login') == username:
+                return '@me'
+        except Exception:
+            # If we can't determine auth user, use provided username
+            pass
+        return username
 
     def _fetch_repos(self, username: str) -> list:
         """
@@ -204,14 +228,19 @@ class GitHubFetcher:
         return language_percentages
 
     def _search_items(self, query: str, per_page: int = 5) -> Dict[str, Any]:
-        """Search issues and PRs using GitHub's search API."""
+        """Search issues and PRs using GitHub CLI search command."""
         try:
+            # Parse query string and convert to command-line flags
+            flags = self._parse_search_query(query)
+
+            # Build command with proper flags
+            cmd = ['gh', 'search', 'issues'] + flags + [
+                '--limit', str(per_page),
+                '--json', 'number,title,repository,url,state'
+            ]
+
             result = subprocess.run(
-                [
-                    'gh', 'api', '/search/issues',
-                    '-f', f'q={query}',
-                    '-f', f'per_page={per_page}'
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -221,21 +250,58 @@ class GitHubFetcher:
 
             data = json.loads(result.stdout)
             items = []
-            for item in data.get('items', [])[:per_page]:
-                repo = self._extract_repo_name(item.get('repository_url', ''))
+            for item in data[:per_page]:
+                repo_info = item.get('repository', {})
+                repo_name = repo_info.get(
+                    'nameWithOwner',
+                    repo_info.get('name', '')
+                )
                 items.append({
                     'title': item.get('title', ''),
-                    'repo': repo,
-                    'url': item.get('html_url', ''),
+                    'repo': repo_name,
+                    'url': item.get('url', ''),
                     'number': item.get('number')
                 })
 
+            # gh search doesn't return total count in JSON, use item count
             return {
-                'total_count': data.get('total_count', 0),
+                'total_count': len(items),
                 'items': items
             }
         except (subprocess.TimeoutExpired, json.JSONDecodeError):
             return {'total_count': 0, 'items': []}
+
+    def _parse_search_query(self, query: str) -> list:
+        """Parse search query string into command-line flags."""
+        flags = []
+        parts = query.split()
+
+        for part in parts:
+            if ':' in part:
+                key, value = part.split(':', 1)
+                if key == 'assignee':
+                    flags.extend(['--assignee', value])
+                elif key == 'author':
+                    flags.extend(['--author', value])
+                elif key == 'mentions':
+                    flags.extend(['--mentions', value])
+                elif key == 'review-requested':
+                    flags.extend(['--review-requested', value])
+                elif key == 'state':
+                    flags.extend(['--state', value])
+                elif key == 'is':
+                    # Handle is:pr and is:issue
+                    if value == 'pr':
+                        flags.append('--include-prs')
+                    # is:issue is default, no flag needed
+                else:
+                    # For other qualifiers, add as search term
+                    flags.append(part)
+            else:
+                # Add as general search term
+                flags.append(part)
+
+        return flags
 
     @staticmethod
     def _extract_repo_name(repo_url: str) -> str:
