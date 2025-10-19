@@ -68,6 +68,7 @@ class DisplayFormatter:
                          stats: Dict[str, Any]) -> None:
         """Display graph and minimal info side-by-side."""
         contrib_graph = stats.get('contribution_graph', [])
+        recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(40, (self.terminal_width - 10) // 2)
         graph_lines = self._get_contribution_graph_lines(
             contrib_graph,
@@ -77,15 +78,22 @@ class DisplayFormatter:
         )
 
         info_lines = self._format_user_info_compact(user_data, stats)
+        achievements = self._build_achievements(recent_weeks)
+
+        # Combine sections
+        right_side = list(info_lines)
+        if achievements:
+            right_side.append("")
+            right_side.extend(achievements)
 
         # Display side-by-side
-        max_lines = max(len(graph_lines), len(info_lines))
+        max_lines = max(len(graph_lines), len(right_side))
         for i in range(max_lines):
             graph_part = (graph_lines[i] if i < len(graph_lines) else "")
             graph_len = self._display_width(graph_part)
             padding = " " * max(0, graph_width - graph_len)
 
-            info_part = (info_lines[i] if i < len(info_lines) else "")
+            info_part = (right_side[i] if i < len(right_side) else "")
             print(f"{graph_part}{padding}  {info_part}")
 
     def _display_full(self, username: str, user_data: Dict[str, Any],
@@ -213,16 +221,12 @@ class DisplayFormatter:
                 stats.get('contribution_graph', [])
             )
 
-        headline = f"{name} - {total_contributions:,} contributions this year"
-        lines.append(self._colorize(headline, "accent"))
-
-        bio = user_data.get('bio')
-        if bio:
-            trimmed = bio.strip().replace('\n', ' ')[:60]
-            lines.append(self._colorize(trimmed, 'muted'))
-
-        lines.append(f"Repos: {stats.get('total_repos', 0)}")
-        lines.append(f"Stars: {stats.get('total_stars', 0)}")
+        # Format user line with same coloring as full display
+        contrib_str = self._colorize(f"{total_contributions:,}", 'orange')
+        name_str = self._colorize(name, 'header')
+        phrase_str = self._colorize('contributions this year', 'header')
+        user_line = f"{name_str} - {contrib_str} {phrase_str}"
+        lines.append(user_line)
 
         return lines
 
@@ -421,7 +425,7 @@ class DisplayFormatter:
                     lines.append(self._format_dashboard_item(item))
 
             if idx < len(groups) - 1:
-                lines.append("")
+                pass  # Remove empty line between groups
 
         return lines
 
@@ -429,7 +433,7 @@ class DisplayFormatter:
         label = f"{text}:"
         padded = f"{label:<{width}}"
         if self.enable_color:
-            return self._colorize(padded, 'bold')
+            return self._colorize(padded, 'header')
         return padded
 
     def _format_dashboard_item(self, item: Dict[str, Any],
