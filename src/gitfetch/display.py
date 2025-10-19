@@ -550,14 +550,14 @@ class DisplayFormatter:
                                 # New month - add spacing and month name
                                 target_width = (idx + 1) * 2
                                 current_width = len(month_line)
-                                needed_space = target_width - current_width
-                                if needed_space > 0:
-                                    month_line += " " * (
-                                        needed_space - len(months[
-                                            current_month - 1
-                                        ])
-                                    )
-                                month_line += months[current_month - 1]
+                                # Ensure at least 1 space between months
+                                month_name = months[current_month - 1]
+                                calc = (target_width -
+                                        current_width -
+                                        len(month_name))
+                                needed_space = max(1, calc)
+                                month_line += " " * needed_space
+                                month_line += month_name
                         except ValueError:
                             pass
 
