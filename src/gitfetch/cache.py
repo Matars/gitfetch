@@ -143,6 +143,10 @@ class CacheManager:
             return (user_data, stats_data, cached_at)
         except (sqlite3.Error, json.JSONDecodeError, ValueError):
             return None
+
+    def get_stale_cached_user_data(
+        self, username: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached user data even if expired.
 
