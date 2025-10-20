@@ -236,13 +236,28 @@ class GitHubFetcher:
         Returns:
             Dictionary mapping language names to percentages
         """
-        language_counts: Dict[str, int] = {}
+        from collections import defaultdict
+
+        # First pass: collect all language occurrences with their casing
+        language_occurrences: Dict[str, Dict[str, int]] = defaultdict(
+            lambda: defaultdict(int))
 
         for repo in repos:
             language = repo.get('language')
             if language:
-                language_counts[language] = language_counts.get(
-                    language, 0) + 1
+                # Group by lowercase name, but keep track of different casings
+                normalized = language.lower()
+                language_occurrences[normalized][language] += 1
+
+        # Second pass: choose canonical casing (most frequent) and sum counts
+        language_counts: Dict[str, int] = {}
+
+        for normalized, casings in language_occurrences.items():
+            # Find the most common casing
+            canonical_name = max(casings.items(), key=lambda x: x[1])[0]
+            # Sum all occurrences for this language
+            total_count = sum(casings.values())
+            language_counts[canonical_name] = total_count
 
         # Calculate percentages
         total = sum(language_counts.values())
