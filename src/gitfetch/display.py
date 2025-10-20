@@ -279,7 +279,7 @@ class DisplayFormatter:
         # Add stars amount under website
         total_stars = stats.get('total_stars')
         if total_stars is not None:
-            add_line('Stars', str(total_stars))
+            add_line('Stars', f"{total_stars} ⭐")
 
         return lines
 
