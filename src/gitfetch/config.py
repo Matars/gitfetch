@@ -203,7 +203,11 @@ class ConfigManager:
 
             if 'COLORS' in self.config:
                 f.write("[COLORS]\n")
-                for key, value in self.config['COLORS'].items():
-                    f.write(f"{key} = {value}\n")
+                # Find the longest key for alignment
+                if self.config['COLORS']:
+                    keys = list(self.config['COLORS'].keys())
+                    max_key_length = max(len(key) for key in keys)
+                    for key, value in self.config['COLORS'].items():
+                        f.write(f"{key:<{max_key_length}} = {value}\n")
                 f.write("\n")
             f.write("\n")
