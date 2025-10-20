@@ -1,8 +1,10 @@
-# gitfetch
+tap# gitfetch
+
+A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
 
 <img width="3024" height="1964" alt="image" src="https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0" />
 
-A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
+<img width="3441" height="1441" alt="2025-10-20-143110_hyprshot" src="https://github.com/user-attachments/assets/ee31ebe3-257f-4aff-994e-fffd47b48fa1" />
 
 ## Features
 
@@ -45,10 +47,50 @@ You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 
 ## Installing `gitfetch`
 
+### macOS (Homebrew)
+
+```bash
+brew install matars/gitfetch/gitfetch
+```
+
+### Arch Linux (AUR)
+
+```bash
+yay -S gitfetch
+```
+
+Or with other AUR helpers:
+
+```bash
+paru -S gitfetch
+trizen -S gitfetch
+```
+
+Or manual build:
+
+```bash
+git clone https://aur.archlinux.org/gitfetch.git
+cd gitfetch
+makepkg -si
+```
+
+### From the sources
 
 1. Clone this repo
 2. `cd` into the repo
 3. Then type the below command
+
+### With `uv`
+
+```bash
+uv tool install git+https://github.com/Matars/gitfetch
+```
+
+### With `pipx`
+
+```bash
+pipx install git+https://github.com/Matars/gitfetch
+```
 
 ```bash
 pip install -e .

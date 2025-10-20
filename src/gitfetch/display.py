@@ -49,7 +49,7 @@ class DisplayFormatter:
         """Determine layout based on terminal width."""
         if self.terminal_width < 80:
             return 'minimal'
-        elif self.terminal_width < 140:
+        elif self.terminal_width < 100:
             return 'compact'
         else:
             return 'full'
@@ -285,6 +285,10 @@ class DisplayFormatter:
 
         add_line('Company', user_data.get('company'))
         add_line('Website', user_data.get('blog'))
+        # Add stars amount under website
+        total_stars = stats.get('total_stars')
+        if total_stars is not None:
+            add_line('Stars', f"{total_stars} ⭐")
 
         return lines
 
@@ -319,6 +323,9 @@ class DisplayFormatter:
         )[:5]
 
         for lang, percentage in sorted_langs:
+            # Reword 'Jupyter notebook' to 'Jupyter'
+            if lang.lower() == 'jupyter notebook':
+                lang = 'Jupyter'
             lines.append(self._format_language_line(lang, percentage))
 
         return lines

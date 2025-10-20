@@ -18,8 +18,7 @@ class GitHubFetcher:
         Args:
             token: Optional GitHub personal access token (ignored, uses gh CLI)
         """
-        # Check if gh CLI is installed and authenticated
-        self._check_gh_cli()
+        pass
 
     def _check_gh_cli(self) -> None:
         """Check if GitHub CLI is installed and authenticated."""
@@ -59,6 +58,7 @@ class GitHubFetcher:
         Returns:
             Parsed JSON response
         """
+        self._check_gh_cli()
         try:
             result = subprocess.run(
                 ['gh', 'api', endpoint, '-X', method],
@@ -84,6 +84,7 @@ class GitHubFetcher:
         Returns:
             Dictionary containing user profile data
         """
+        self._check_gh_cli()
         return self._gh_api(f'/users/{username}')
 
     def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -97,6 +98,7 @@ class GitHubFetcher:
         Returns:
             Dictionary containing user statistics
         """
+        self._check_gh_cli()
         repos = self._fetch_repos(username)
 
         total_stars = sum(repo.get('stargazers_count', 0) for repo in repos)

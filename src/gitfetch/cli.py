@@ -10,6 +10,7 @@ from .fetcher import GitHubFetcher
 from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
+from . import __version__
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,8 +58,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--version",
-        action="version",
-        version="%(prog)s 0.1.0"
+        action="store_true",
+        help="Show version and check for updates"
     )
 
     return parser.parse_args()
@@ -67,6 +68,26 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     """Main entry point for the CLI."""
     args = parse_args()
+
+    if args.version:
+        print(f"gitfetch version: {__version__}")
+        # Check for updates from GitHub
+        import requests
+        try:
+            resp = requests.get(
+                "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
+            if resp.status_code == 200:
+                latest = resp.json()["tag_name"].lstrip("v")
+                if latest != __version__:
+                    print(
+                        f"\033[93mUpdate available: {latest}. Get it at https://github.com/Matars/gitfetch/releases/latest\033[0m")
+                else:
+                    print("You are using the latest version.")
+            else:
+                print("Could not check for updates.")
+        except Exception:
+            print("Could not check for updates.")
+        return 0
 
     # Initialize config
     config_manager = ConfigManager()
@@ -115,17 +136,13 @@ def main() -> int:
             stats = fetcher.fetch_user_stats(username, user_data)
             cache_manager.cache_user_data(username, user_data, stats)
         else:
-            # Try to get fresh cache first
             user_data = cache_manager.get_cached_user_data(username)
             stats = cache_manager.get_cached_stats(username)
-
             if user_data is None or stats is None:
-                # No fresh cache, try to get stale cache for immediate display
+                # Try to get stale cache for immediate display
                 stale_user_data = cache_manager.get_stale_cached_user_data(
-                    username
-                )
+                    username)
                 stale_stats = cache_manager.get_stale_cached_stats(username)
-
                 if stale_user_data is not None and stale_stats is not None:
                     # Display stale cache immediately
                     formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
@@ -139,17 +156,13 @@ def main() -> int:
                         try:
                             fresh_user_data = fetcher.fetch_user_data(username)
                             fresh_stats = fetcher.fetch_user_stats(
-                                username, fresh_user_data
-                            )
+                                username, fresh_user_data)
                             cache_manager.cache_user_data(
-                                username, fresh_user_data, fresh_stats
-                            )
+                                username, fresh_user_data, fresh_stats)
                         except Exception:
-                            pass  # Silently fail background refresh
-
+                            pass
                     thread = threading.Thread(
-                        target=refresh_cache, daemon=True
-                    )
+                        target=refresh_cache, daemon=True)
                     thread.start()
                     return 0
                 else:
@@ -163,7 +176,6 @@ def main() -> int:
         formatter.display(username, user_data, stats, spaced=spaced)
 
         return 0
-
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
