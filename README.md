@@ -4,13 +4,13 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 
 ## Features
 
-- 🎨 Neofetch-style display with ASCII art
-- 📊 Comprehensive GitHub statistics
-- 💾 Smart SQLite-based caching system for faster subsequent runs
-- ⚙️ Persistent configuration with default username support
-- 🔐 Uses GitHub CLI (gh) for authentication - no rate limits!
-- 🐧 Cross-platform support (macOS and Linux)
-- 🚀 First-run initialization with interactive setup
+- Neofetch-style display with ASCII art
+- Comprehensive GitHub statistics
+- Smart SQLite-based caching system for faster subsequent runs
+-  Persistent configuration with default username support
+- Uses GitHub CLI (gh) for authentication - no rate limits!
+- Cross-platform support (macOS and Linux)
+- First-run initialization with interactive setup
 
 ## Prerequisites
 
