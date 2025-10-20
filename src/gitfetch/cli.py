@@ -95,14 +95,51 @@ def main() -> int:
         if args.no_cache:
             user_data = fetcher.fetch_user_data(username)
             stats = fetcher.fetch_user_stats(username, user_data)
+            cache_manager.cache_user_data(username, user_data, stats)
         else:
+            # Try to get fresh cache first
             user_data = cache_manager.get_cached_user_data(username)
             stats = cache_manager.get_cached_stats(username)
 
             if user_data is None or stats is None:
-                user_data = fetcher.fetch_user_data(username)
-                stats = fetcher.fetch_user_stats(username, user_data)
-                cache_manager.cache_user_data(username, user_data, stats)
+                # No fresh cache, try to get stale cache for immediate display
+                stale_user_data = cache_manager.get_stale_cached_user_data(
+                    username
+                )
+                stale_stats = cache_manager.get_stale_cached_stats(username)
+
+                if stale_user_data is not None and stale_stats is not None:
+                    # Display stale cache immediately
+                    formatter.display(username, stale_user_data, stale_stats)
+                    print("\n🔄 Refreshing data in background...",
+                          file=sys.stderr)
+
+                    # Refresh cache in background (don't wait for it)
+                    import threading
+
+                    def refresh_cache():
+                        try:
+                            fresh_user_data = fetcher.fetch_user_data(username)
+                            fresh_stats = fetcher.fetch_user_stats(
+                                username, fresh_user_data
+                            )
+                            cache_manager.cache_user_data(
+                                username, fresh_user_data, fresh_stats
+                            )
+                        except Exception:
+                            pass  # Silently fail background refresh
+
+                    thread = threading.Thread(
+                        target=refresh_cache, daemon=True
+                    )
+                    thread.start()
+                    return 0
+                else:
+                    # No cache at all, fetch fresh data
+                    user_data = fetcher.fetch_user_data(username)
+                    stats = fetcher.fetch_user_stats(username, user_data)
+                    cache_manager.cache_user_data(username, user_data, stats)
+            # else: fresh cache available, proceed to display
 
         # Display the results
         formatter.display(username, user_data, stats)
@@ -126,7 +163,8 @@ def _prompt_username() -> Optional[str]:
 
 def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
     """
-    Initialize gitfetch by creating config directory and asking for default username.
+    Initialize gitfetch by creating config directory and asking for
+    default username.
 
     Args:
         config_manager: ConfigManager instance
@@ -137,7 +175,8 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
     try:
         # Prompt for default username
         print("Please enter your default GitHub username.")
-        print("(You can override this later by passing a username as an argument)")
+        print("(You can override this later by passing a username as "
+              "an argument)")
         username = input("\nGitHub username: ").strip()
 
         if not username:

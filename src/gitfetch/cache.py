@@ -15,12 +15,12 @@ class CacheManager:
     CACHE_DIR = Path.home() / ".config" / "gitfetch"
     DB_FILE = CACHE_DIR / "cache.db"
 
-    def __init__(self, cache_expiry_hours: int = 24):
+    def __init__(self, cache_expiry_hours: int = 6):
         """
         Initialize the cache manager.
 
         Args:
-            cache_expiry_hours: Hours before cache expires (default: 24)
+            cache_expiry_hours: Hours before cache expires (default: 6)
         """
         self.cache_expiry_hours = cache_expiry_hours
         self._ensure_cache_dir()
@@ -75,7 +75,9 @@ class CacheManager:
         entry = self.get_cached_entry(username)
         return entry[1] if entry else None
 
-    def get_cached_entry(self, username: str) -> Optional[tuple[Dict[str, Any], Dict[str, Any]]]:
+    def get_cached_entry(self, username: str) -> Optional[
+            tuple[Dict[str, Any], Dict[str, Any]]
+    ]:
         """
         Retrieve both user data and stats if available and not expired.
 
@@ -109,6 +111,81 @@ class CacheManager:
         except (sqlite3.Error, json.JSONDecodeError, ValueError):
             return None
 
+    def get_stale_cached_entry(self, username: str) -> Optional[
+            tuple[Dict[str, Any], Dict[str, Any], datetime]
+    ]:
+        """
+        Retrieve cached data even if expired (for background refresh).
+
+        Args:
+            username: GitHub username
+
+        Returns:
+            Tuple of (user_data, stats, cached_at) or None if not available
+        """
+        try:
+            conn = sqlite3.connect(self.DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT user_data, stats_data, cached_at FROM users '
+                'WHERE username = ?',
+                (username,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+
+            if not row:
+                return None
+
+            cached_at = datetime.fromisoformat(row[2])
+            user_data = json.loads(row[0])
+            stats_data = json.loads(row[1])
+            return (user_data, stats_data, cached_at)
+        except (sqlite3.Error, json.JSONDecodeError, ValueError):
+            return None
+        """
+        Retrieve cached user data even if expired.
+
+        Args:
+            username: GitHub username
+
+        Returns:
+            Cached user data or None if not available
+        """
+        entry = self.get_stale_cached_entry(username)
+        return entry[0] if entry else None
+
+    def get_stale_cached_stats(self, username: str) -> Optional[
+            Dict[str, Any]
+    ]:
+        """
+        Retrieve cached statistics even if expired.
+
+        Args:
+            username: GitHub username
+
+        Returns:
+            Cached stats or None if not available
+        """
+        entry = self.get_stale_cached_entry(username)
+        return entry[1] if entry else None
+
+    def is_cache_stale(self, username: str) -> bool:
+        """
+        Check if cached data exists but is stale (expired).
+
+        Args:
+            username: GitHub username
+
+        Returns:
+            True if cache exists but is stale, False otherwise
+        """
+        entry = self.get_stale_cached_entry(username)
+        if not entry:
+            return False
+        _, _, cached_at = entry
+        return self._is_cache_expired(cached_at)
+
     def cache_user_data(self, username: str, user_data: Dict[str, Any],
                         stats: Dict[str, Any]) -> None:
         """
@@ -123,7 +200,7 @@ class CacheManager:
             conn = sqlite3.connect(self.DB_FILE)
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO users 
+                INSERT OR REPLACE INTO users
                 (username, user_data, stats_data, cached_at)
                 VALUES (?, ?, ?, ?)
             ''', (
