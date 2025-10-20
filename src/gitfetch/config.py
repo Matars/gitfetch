@@ -83,7 +83,41 @@ class ConfigManager:
         Returns:
             User defined colors or default colors if not set
         """
-        return self.config._sections["COLORS"]
+        # Color name to ANSI code mapping
+        color_names = {
+            'black': '\\033[30m',
+            'red': '\\033[91m',
+            'green': '\\033[92m',
+            'yellow': '\\033[93m',
+            'blue': '\\033[94m',
+            'magenta': '\\033[95m',
+            'cyan': '\\033[96m',
+            'white': '\\033[97m',
+            'gray': '\\033[90m',
+            'bright_red': '\\033[91m',
+            'bright_green': '\\033[92m',
+            'bright_yellow': '\\033[93m',
+            'bright_blue': '\\033[94m',
+            'bright_magenta': '\\033[95m',
+            'bright_cyan': '\\033[96m',
+            'bright_white': '\\033[97m',
+            'orange': '\\033[38;2;255;165;0m',
+            'purple': '\\033[95m',  # alias for magenta
+            'pink': '\\033[95m',    # alias for magenta
+        }
+
+        colors = self.config._sections["COLORS"]
+        resolved_colors = {}
+
+        for key, value in colors.items():
+            # If the value is a known color name, map it to ANSI code
+            if value.lower() in color_names:
+                resolved_colors[key] = color_names[value.lower()]
+            else:
+                # Assume it's already an ANSI code or keep as-is
+                resolved_colors[key] = value
+
+        return resolved_colors
 
     def set_default_username(self, username: str) -> None:
         """
