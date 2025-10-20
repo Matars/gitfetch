@@ -6,7 +6,6 @@ import argparse
 import sys
 from typing import Optional
 
-from .fetcher import GitHubFetcher
 from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
@@ -105,7 +104,9 @@ def main() -> int:
     # Initialize components
     cache_expiry = config_manager.get_cache_expiry_hours()
     cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
-    fetcher = GitHubFetcher()  # Uses gh CLI, no token needed
+    provider = config_manager.get_provider()
+    provider_url = config_manager.get_provider_url()
+    fetcher = _create_fetcher(provider, provider_url)
     formatter = DisplayFormatter(config_manager)
     if args.spaced:
         spaced = True
@@ -192,13 +193,57 @@ def main() -> int:
 
 
 def _prompt_username() -> Optional[str]:
-    """Prompt user for GitHub username if not provided."""
+    """Prompt user for username if not provided."""
     try:
-        username = input("Enter GitHub username: ").strip()
+        username = input("Enter username: ").strip()
         return username if username else None
     except (KeyboardInterrupt, EOFError):
         print()
         return None
+
+
+def _prompt_provider() -> Optional[str]:
+    """Prompt user for git provider."""
+    try:
+        print("Available git providers:")
+        print("1. GitHub")
+        print("2. GitLab")
+        print("3. Gitea/Forgejo/Codeberg")
+        print("4. Sourcehut")
+
+        while True:
+            choice = input("Choose your git provider (1-4): ").strip()
+            if choice == '1':
+                return 'github'
+            elif choice == '2':
+                return 'gitlab'
+            elif choice == '3':
+                return 'gitea'
+            elif choice == '4':
+                return 'sourcehut'
+            else:
+                print("Invalid choice. Please enter 1-4.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return None
+
+
+def _create_fetcher(provider: str, base_url: str):
+    """Create the appropriate fetcher for the provider."""
+    if provider == 'github':
+        from .fetcher import GitHubFetcher
+        return GitHubFetcher()
+    elif provider == 'gitlab':
+        from .fetcher import GitLabFetcher
+        return GitLabFetcher(base_url)
+    elif provider == 'gitea':
+        from .fetcher import GiteaFetcher
+        return GiteaFetcher(base_url)
+    elif provider == 'sourcehut':
+        from .fetcher import SourcehutFetcher
+        return SourcehutFetcher(base_url)
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
 
 
 def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
@@ -213,14 +258,42 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         True if initialization succeeded, False otherwise
     """
     try:
-        # Try to get authenticated user from GitHub CLI
-        fetcher = GitHubFetcher()
+        # Ask user for git provider
+        provider = _prompt_provider()
+        if not provider:
+            return False
+
+        config_manager.set_provider(provider)
+
+        # Set default URL for known providers
+        if provider == 'github':
+            config_manager.set_provider_url('https://api.github.com')
+        elif provider == 'gitlab':
+            config_manager.set_provider_url('https://gitlab.com')
+        elif provider == 'gitea':
+            url = input("Enter Gitea/Forgejo/Codeberg URL: ").strip()
+            if not url:
+                print("Provider URL required", file=sys.stderr)
+                return False
+            config_manager.set_provider_url(url)
+        elif provider == 'sourcehut':
+            config_manager.set_provider_url('https://git.sr.ht')
+
+        # Create appropriate fetcher
+        fetcher = _create_fetcher(provider, config_manager.get_provider_url())
+
+        # Try to get authenticated user
         try:
             username = fetcher.get_authenticated_user()
-            print(f"Using authenticated GitHub user: {username}")
+            print(f"Using authenticated user: {username}")
         except Exception as e:
             print(f"Could not get authenticated user: {e}")
-            print("Please ensure GitHub CLI is authenticated with: gh auth login")
+            if provider == 'github':
+                print("Please authenticate with: gh auth login")
+            elif provider == 'gitlab':
+                print("Please authenticate with: glab auth login")
+            else:
+                print("Please ensure you have a valid token configured")
             return False
 
         # Save configuration

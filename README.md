@@ -1,6 +1,6 @@
 # gitfetch
 
-A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
+A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics. Display your profile and stats from various git hosting platforms in a beautiful, colorful terminal interface.
 
 <img width="3024" height="1964" alt="image" src="https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0" />
 
@@ -9,41 +9,33 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 ## Features
 
 - Neofetch-style display with ASCII art
-- Comprehensive GitHub statistics
+- Comprehensive statistics from multiple git hosting platforms
 - Smart SQLite-based caching system for faster subsequent runs
 - Persistent configuration with default username support
-- Uses GitHub CLI (gh) for authentication - no rate limits!
 - Cross-platform support (macOS and Linux)
-- First-run initialization with interactive setup
+- First-run initialization with interactive provider selection
 
-## Prerequisites
+## Supported Platforms
 
-**GitHub CLI (gh) must be installed and authenticated:**
+- **GitHub** - Uses GitHub CLI (gh) for authentication
+- **GitLab** - Uses GitLab CLI (glab) for authentication
+- **Gitea/Forgejo/Codeberg** - Uses personal access tokens
+- **Sourcehut** - Uses personal access tokens
 
-See installation instructions at: https://github.com/cli/cli#installation
+## Installation
 
-### macOS
+`gitfetch` can be installed without any prerequisites. During first-run setup, you'll be guided to install and authenticate with the necessary CLI tools or provide access tokens for your chosen git hosting platform.
 
-```bash
-brew install gh
-gh auth login
-```
+## First-run Setup
 
-### Linux
+When you run `gitfetch` for the first time, you'll be prompted to:
 
-Then authenticate:
+1. **Choose your git hosting provider** (GitHub, GitLab, Gitea/Forgejo/Codeberg, or Sourcehut)
+2. **Install required CLI tools** (if using GitHub or GitLab)
+3. **Authenticate** with your chosen platform
+4. **Configure access tokens** (if using Gitea/Forgejo/Codeberg or Sourcehut)
 
-```bash
-gh auth login
-```
-
-### Verify Installation
-
-```bash
-gh auth status
-```
-
-You should see: `✓ Logged in to github.com as YOUR_USERNAME`
+The setup process will provide helpful error messages and installation instructions if anything is missing.
 
 ## Installing `gitfetch`
 

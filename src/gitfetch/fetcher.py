@@ -1,14 +1,65 @@
 """
-GitHub data fetcher using the GitHub CLI (gh)
+Git data fetcher for various git hosting providers
 """
 
+from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import subprocess
 import json
 import sys
 
 
-class GitHubFetcher:
+class BaseFetcher(ABC):
+    """Abstract base class for git hosting provider fetchers."""
+
+    def __init__(self, token: Optional[str] = None):
+        """
+        Initialize the fetcher.
+
+        Args:
+            token: Optional authentication token
+        """
+        self.token = token
+
+    @abstractmethod
+    def get_authenticated_user(self) -> str:
+        """
+        Get the authenticated username.
+
+        Returns:
+            The login of the authenticated user
+        """
+        pass
+
+    @abstractmethod
+    def fetch_user_data(self, username: str) -> Dict[str, Any]:
+        """
+        Fetch basic user profile data.
+
+        Args:
+            username: Username to fetch data for
+
+        Returns:
+            Dictionary containing user profile data
+        """
+        pass
+
+    @abstractmethod
+    def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Fetch detailed statistics for a user.
+
+        Args:
+            username: Username to fetch stats for
+            user_data: Optional pre-fetched user data
+
+        Returns:
+            Dictionary containing user statistics
+        """
+        pass
+
+
+class GitHubFetcher(BaseFetcher):
     """Fetches GitHub user data and statistics using GitHub CLI."""
 
     def __init__(self, token: Optional[str] = None):
@@ -418,3 +469,365 @@ class GitHubFetcher:
 
         except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
             return []
+
+
+class GitLabFetcher(BaseFetcher):
+    """Fetches GitLab user data and statistics."""
+
+    def __init__(self, base_url: str = "https://gitlab.com",
+                 token: Optional[str] = None):
+        """
+        Initialize the GitLab fetcher.
+
+        Args:
+            base_url: GitLab instance base URL
+            token: Optional GitLab personal access token
+        """
+        super().__init__(token)
+        self.base_url = base_url.rstrip('/')
+        self.api_base = f"{self.base_url}/api/v4"
+
+    def _check_glab_cli(self) -> None:
+        """Check if GitLab CLI is installed and authenticated."""
+        try:
+            result = subprocess.run(
+                ['glab', 'auth', 'status'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                print("GitLab CLI not authenticated", file=sys.stderr)
+                print("Please run: glab auth login", file=sys.stderr)
+                sys.exit(1)
+        except FileNotFoundError:
+            print("GitLab CLI (glab) not installed", file=sys.stderr)
+            print("Install: https://gitlab.com/gitlab-org/cli",
+                  file=sys.stderr)
+            sys.exit(1)
+        except subprocess.TimeoutExpired:
+            print("Error: glab CLI timeout", file=sys.stderr)
+            sys.exit(1)
+
+    def get_authenticated_user(self) -> str:
+        """
+        Get the authenticated GitLab username.
+
+        Returns:
+            The username of the authenticated user
+        """
+        try:
+            result = subprocess.run(
+                ['glab', 'api', '/user'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode != 0:
+                raise Exception("Failed to get user info")
+
+            data = json.loads(result.stdout)
+            return data.get('username', '')
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+            raise Exception("Could not determine authenticated user")
+
+    def _api_request(self, endpoint: str) -> Any:
+        """
+        Make API request to GitLab.
+
+        Args:
+            endpoint: API endpoint
+
+        Returns:
+            Parsed JSON response
+        """
+        cmd = ['glab', 'api', endpoint]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode != 0:
+                raise Exception(f"API request failed: {result.stderr}")
+            return json.loads(result.stdout)
+        except subprocess.TimeoutExpired:
+            raise Exception("GitLab API request timed out")
+        except json.JSONDecodeError as e:
+            raise Exception(f"Failed to parse API response: {e}")
+
+    def fetch_user_data(self, username: str) -> Dict[str, Any]:
+        """
+        Fetch basic user profile data from GitLab.
+
+        Args:
+            username: GitLab username
+
+        Returns:
+            Dictionary containing user profile data
+        """
+        return self._api_request(f'/users?username={username}')[0]
+
+    def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Fetch detailed statistics for a GitLab user.
+
+        Args:
+            username: GitLab username
+            user_data: Optional pre-fetched user data
+
+        Returns:
+            Dictionary containing user statistics
+        """
+        if not user_data:
+            user_data = self.fetch_user_data(username)
+
+        user_id = user_data.get('id')
+
+        # Fetch user's projects
+        repos = self._api_request(f'/users/{user_id}/projects')
+
+        total_stars = sum(repo.get('star_count', 0) for repo in repos)
+        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
+
+        # Calculate language stats
+        languages = {}
+        for repo in repos:
+            lang = repo.get('language', 'Unknown')
+            if lang in languages:
+                languages[lang] += 1
+            else:
+                languages[lang] = 1
+
+        # GitLab doesn't have contribution graphs like GitHub
+        # Return simplified stats
+        return {
+            'total_stars': total_stars,
+            'total_forks': total_forks,
+            'total_repos': len(repos),
+            'languages': languages,
+            'contribution_graph': [],  # Not available
+            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
+            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+        }
+
+
+class GiteaFetcher(BaseFetcher):
+    """Fetches Gitea/Forgejo/Codeberg user data and statistics."""
+
+    def __init__(self, base_url: str, token: Optional[str] = None):
+        """
+        Initialize the Gitea fetcher.
+
+        Args:
+            base_url: Gitea instance base URL (required)
+            token: Optional Gitea personal access token
+        """
+        super().__init__(token)
+        self.base_url = base_url.rstrip('/')
+        self.api_base = f"{self.base_url}/api/v1"
+
+    def get_authenticated_user(self) -> str:
+        """
+        Get the authenticated Gitea username.
+
+        Returns:
+            The username of the authenticated user
+        """
+        if not self.token:
+            raise Exception("Token required for Gitea authentication")
+
+        try:
+            import requests
+            headers = {'Authorization': f'token {self.token}'}
+            response = requests.get(
+                f'{self.api_base}/user', headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            return data.get('login', '')
+        except Exception as e:
+            raise Exception(f"Could not get authenticated user: {e}")
+
+    def _api_request(self, endpoint: str) -> Any:
+        """
+        Make API request to Gitea.
+
+        Args:
+            endpoint: API endpoint
+
+        Returns:
+            Parsed JSON response
+        """
+        if not self.token:
+            raise Exception("Token required for Gitea API")
+
+        try:
+            import requests
+            headers = {'Authorization': f'token {self.token}'}
+            response = requests.get(
+                f'{self.api_base}{endpoint}', headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise Exception(f"Gitea API request failed: {e}")
+
+    def fetch_user_data(self, username: str) -> Dict[str, Any]:
+        """
+        Fetch basic user profile data from Gitea.
+
+        Args:
+            username: Gitea username
+
+        Returns:
+            Dictionary containing user profile data
+        """
+        return self._api_request(f'/users/{username}')
+
+    def fetch_user_stats(self, username: str, user_data=None):
+        """
+        Fetch detailed statistics for a Gitea user.
+
+        Args:
+            username: Gitea username
+            user_data: Optional pre-fetched user data
+
+        Returns:
+            Dictionary containing user statistics
+        """
+        if not user_data:
+            user_data = self.fetch_user_data(username)
+
+        # Fetch user's repositories
+        repos = self._api_request(f'/users/{username}/repos')
+
+        total_stars = sum(repo.get('stars_count', 0) for repo in repos)
+        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
+
+        # Calculate language stats
+        languages = {}
+        for repo in repos:
+            lang = repo.get('language', 'Unknown')
+            if lang and lang in languages:
+                languages[lang] += 1
+            elif lang:
+                languages[lang] = 1
+
+        # Gitea doesn't have contribution graphs or PR/issue stats like GitHub
+        return {
+            'total_stars': total_stars,
+            'total_forks': total_forks,
+            'total_repos': len(repos),
+            'languages': languages,
+            'contribution_graph': [],  # Not available
+            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
+            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+        }
+
+
+class SourcehutFetcher(BaseFetcher):
+    """Fetches Sourcehut user data and statistics."""
+
+    def __init__(self, base_url: str = "https://git.sr.ht", token: Optional[str] = None):
+        """
+        Initialize the Sourcehut fetcher.
+
+        Args:
+            base_url: Sourcehut instance base URL
+            token: Optional Sourcehut personal access token
+        """
+        super().__init__(token)
+        self.base_url = base_url.rstrip('/')
+
+    def get_authenticated_user(self) -> str:
+        """
+        Get the authenticated Sourcehut username.
+
+        Returns:
+            The username of the authenticated user
+        """
+        if not self.token:
+            raise Exception("Token required for Sourcehut authentication")
+
+        # Sourcehut uses GraphQL API
+        try:
+            import requests
+            query = """
+            query {
+                me {
+                    username
+                }
+            }
+            """
+            headers = {'Authorization': f'Bearer {self.token}'}
+            response = requests.post(
+                f'{self.base_url}/graphql',
+                json={'query': query},
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get('data', {}).get('me', {}).get('username', '')
+        except Exception as e:
+            raise Exception(f"Could not get authenticated user: {e}")
+
+    def fetch_user_data(self, username: str) -> Dict[str, Any]:
+        """
+        Fetch basic user profile data from Sourcehut.
+
+        Args:
+            username: Sourcehut username
+
+        Returns:
+            Dictionary containing user profile data
+        """
+        # Sourcehut GraphQL query for user
+        query = f"""
+        query {{
+            user(username: "{username}") {{
+                username
+                name
+                bio
+                location
+                website
+            }}
+        }}
+        """
+        try:
+            import requests
+            headers = {
+                'Authorization': f'Bearer {self.token}'} if self.token else {}
+            response = requests.post(
+                f'{self.base_url}/graphql',
+                json={'query': query},
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get('data', {}).get('user', {})
+        except Exception as e:
+            raise Exception(f"Sourcehut API request failed: {e}")
+
+    def fetch_user_stats(self, username: str, user_data=None):
+        """
+        Fetch detailed statistics for a Sourcehut user.
+
+        Args:
+            username: Sourcehut username
+            user_data: Optional pre-fetched user data
+
+        Returns:
+            Dictionary containing user statistics
+        """
+        # Sourcehut has limited public stats, return minimal data
+        return {
+            'total_stars': 0,  # Not available
+            'total_forks': 0,  # Not available
+            'total_repos': 0,  # Would need separate API call
+            'languages': {},  # Not available
+            'contribution_graph': [],  # Not available
+            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
+            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+        }

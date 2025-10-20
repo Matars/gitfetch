@@ -126,9 +126,53 @@ class ConfigManager:
         Check if gitfetch has been initialized.
 
         Returns:
-            True if config exists and has default username
+            True if config exists and has default username and provider
         """
-        return self.CONFIG_FILE.exists() and bool(self.get_default_username())
+        return (self.CONFIG_FILE.exists() and
+                bool(self.get_default_username()) and
+                bool(self.get_provider()))
+
+    def get_provider(self) -> Optional[str]:
+        """
+        Get the git provider from config.
+
+        Returns:
+            Provider name (github, gitlab, gitea, etc.) or None if not set
+        """
+        provider = self.config.get('DEFAULT', 'provider', fallback='')
+        return provider if provider else None
+
+    def set_provider(self, provider: str) -> None:
+        """
+        Set the git provider in config.
+
+        Args:
+            provider: Git provider name (github, gitlab, gitea, etc.)
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['provider'] = provider
+
+    def get_provider_url(self) -> Optional[str]:
+        """
+        Get the provider base URL from config.
+
+        Returns:
+            Base URL for the git provider or None if not set
+        """
+        url = self.config.get('DEFAULT', 'provider_url', fallback='')
+        return url if url else None
+
+    def set_provider_url(self, url: str) -> None:
+        """
+        Set the provider base URL in config.
+
+        Args:
+            url: Base URL for the git provider
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['provider_url'] = url
 
     def save(self) -> None:
         """Save configuration to file."""
