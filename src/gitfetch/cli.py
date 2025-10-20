@@ -6,6 +6,8 @@ import argparse
 import sys
 from typing import Optional
 
+import readchar
+
 from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
@@ -15,7 +17,7 @@ from . import __version__
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="A neofetch-style CLI tool for GitHub statistics",
+        description="A neofetch-style CLI tool for git provider statistics",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -203,26 +205,42 @@ def _prompt_username() -> Optional[str]:
 
 
 def _prompt_provider() -> Optional[str]:
-    """Prompt user for git provider."""
-    try:
-        print("Available git providers:")
-        print("1. GitHub")
-        print("2. GitLab")
-        print("3. Gitea/Forgejo/Codeberg")
-        print("4. Sourcehut")
+    """Prompt user for git provider with interactive selection."""
+    providers = [
+        ('github', 'GitHub'),
+        ('gitlab', 'GitLab'),
+        ('gitea', 'Gitea/Forgejo/Codeberg'),
+        ('sourcehut', 'Sourcehut')
+    ]
 
+    selected = 0
+
+    try:
         while True:
-            choice = input("Choose your git provider (1-4): ").strip()
-            if choice == '1':
-                return 'github'
-            elif choice == '2':
-                return 'gitlab'
-            elif choice == '3':
-                return 'gitea'
-            elif choice == '4':
-                return 'sourcehut'
-            else:
-                print("Invalid choice. Please enter 1-4.")
+            # Clear screen and print header
+            print("\033[2J\033[H", end="")
+            print("Choose your git provider:")
+            print()
+
+            # Print options with cursor
+            for i, (key, name) in enumerate(providers):
+                indicator = "●" if i == selected else "○"
+                print(f"{indicator} {name}")
+
+            print()
+            print("Use ↑/↓ arrows, ● = selected, Enter to confirm")
+
+            # Read key
+            key = readchar.readkey()
+
+            if key == readchar.key.UP:
+                selected = (selected - 1) % len(providers)
+            elif key == readchar.key.DOWN:
+                selected = (selected + 1) % len(providers)
+            elif key == readchar.key.ENTER:
+                print()  # New line after selection
+                return providers[selected][0]
+
     except (KeyboardInterrupt, EOFError):
         print()
         return None

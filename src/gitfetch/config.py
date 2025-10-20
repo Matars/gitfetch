@@ -176,6 +176,34 @@ class ConfigManager:
 
     def save(self) -> None:
         """Save configuration to file."""
+        import os
         self._ensure_config_dir()
+        # Remove the file if it exists to ensure clean write
+        if self.CONFIG_FILE.exists():
+            os.remove(self.CONFIG_FILE)
         with open(self.CONFIG_FILE, 'w') as f:
-            self.config.write(f)
+            f.write("# gitfetch configuration file\n")
+            f.write("# See docs/providers.md for provider configuration\n")
+            f.write("# See docs/colors.md for color customization\n\n")
+
+            f.write("[DEFAULT]\n")
+            username = self.config.get('DEFAULT', 'username', fallback='')
+            f.write(f"username = {username}\n\n")
+
+            cache_hours = self.config.get('DEFAULT', 'cache_expiry_hours',
+                                          fallback='24')
+            f.write(f"cache_expiry_hours = {cache_hours}\n\n")
+
+            provider = self.config.get('DEFAULT', 'provider', fallback='')
+            f.write(f"provider = {provider}\n\n")
+
+            provider_url = self.config.get('DEFAULT', 'provider_url',
+                                           fallback='')
+            f.write(f"provider_url = {provider_url}\n\n")
+
+            if 'COLORS' in self.config:
+                f.write("[COLORS]\n")
+                for key, value in self.config['COLORS'].items():
+                    f.write(f"{key} = {value}\n")
+                f.write("\n")
+            f.write("\n")
