@@ -22,7 +22,6 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 
 See installation instructions at: https://github.com/cli/cli#installation
 
-
 ### macOS
 
 ```bash
@@ -57,24 +56,22 @@ brew install matars/gitfetch/gitfetch
 
 ### Arch Linux (AUR)
 
-## Note: currenly not working, use local installation - AUR packagte will be fixed soon
-
 ```bash
-yay -S gitfetch
+yay -S gitfetch-python
 ```
 
 Or with other AUR helpers:
 
 ```bash
-paru -S gitfetch
-trizen -S gitfetch
+paru -S gitfetch-python
+trizen -S gitfetch-python
 ```
 
 Or manual build:
 
 ```bash
-git clone https://aur.archlinux.org/gitfetch.git
-cd gitfetch
+git clone https://aur.archlinux.org/gitfetch-python.git
+cd gitfetch-python
 makepkg -si
 ```
 
@@ -83,6 +80,12 @@ makepkg -si
 1. Clone this repo
 2. `cd` into the repo
 3. Then type the below command
+
+### With `pip`
+
+```bash
+pip install -e .
+```
 
 ### With `uv`
 
@@ -94,10 +97,6 @@ uv tool install git+https://github.com/Matars/gitfetch
 
 ```bash
 pipx install git+https://github.com/Matars/gitfetch
-```
-
-```bash
-pip install -e .
 ```
 
 ## First Run

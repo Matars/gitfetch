@@ -40,7 +40,7 @@ jobs:
 
       - name: Clone AUR repo
         run: |
-          git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key -o UserKnownHostsFile=~/.ssh/known_hosts" git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
           cd aur-repo
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
