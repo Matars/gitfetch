@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "username",
         nargs="?",
-        help="GitHub username to fetch stats for"
+        help="Username to fetch stats for"
     )
 
     parser.add_argument(

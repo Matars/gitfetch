@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gitfetch"
 version = "1.1.0"
-description = "A neofetch-style CLI tool for GitHub statistics"
+description = "A neofetch-style CLI tool for git provider statistics"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "GPL-2.0"}

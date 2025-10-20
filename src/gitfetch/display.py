@@ -1,5 +1,5 @@
 """
-Display formatter for GitHub statistics in neofetch style
+Display formatter for git provider statistics in neofetch style
 """
 
 from typing import Dict, Any, Optional
@@ -12,7 +12,7 @@ from .config import ConfigManager
 
 
 class DisplayFormatter:
-    """Formats and displays GitHub stats in a neofetch-style layout."""
+    """Formats and displays git provider stats in a neofetch-style layout."""
 
     def __init__(self, config_manager: ConfigManager):
         """Initialize the display formatter."""
@@ -23,10 +23,10 @@ class DisplayFormatter:
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
         """
-        Display GitHub statistics in neofetch style.
+        Display git provider statistics in neofetch style.
 
         Args:
-            username: GitHub username
+            username: Git provider username
             user_data: User profile data
             stats: User statistics data
             spaced: Spaced layout

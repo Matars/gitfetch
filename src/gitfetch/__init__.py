@@ -1,5 +1,5 @@
 """
-gitfetch - A neofetch-style CLI tool for GitHub statistics
+gitfetch - A neofetch-style CLI tool for git provider statistics
 """
 
 import re
@@ -14,7 +14,7 @@ def _get_version() -> str:
         return metadata.version("gitfetch")
     except (ImportError, metadata.PackageNotFoundError):
         pass
-    
+
     # Fallback: try to read from pyproject.toml (works in development)
     pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
     try:

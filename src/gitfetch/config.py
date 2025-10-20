@@ -68,7 +68,7 @@ class ConfigManager:
 
     def get_default_username(self) -> Optional[str]:
         """
-        Get the default GitHub username from config.
+        Get the default username from config.
 
         Returns:
             Default username or None if not set
@@ -87,10 +87,10 @@ class ConfigManager:
 
     def set_default_username(self, username: str) -> None:
         """
-        Set the default GitHub username in config.
+        Set the default username in config.
 
         Args:
-            username: GitHub username to set as default
+            username: Username to set as default
         """
         if 'DEFAULT' not in self.config:
             self.config['DEFAULT'] = {}

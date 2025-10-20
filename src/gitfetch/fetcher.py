@@ -100,7 +100,7 @@ class GitHubFetcher(BaseFetcher):
 
     def get_authenticated_user(self) -> str:
         """
-        Get the authenticated GitHub username.
+        Get the authenticated username.
 
         Returns:
             The login of the authenticated user
