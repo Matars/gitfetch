@@ -234,10 +234,10 @@ class GitHubFetcher:
         try:
             # Determine search type based on query
             search_type = 'prs' if 'is:pr' in query else 'issues'
-            
+
             # Remove is:pr/issue from query as it's implied by search type
             query = query.replace('is:pr ', '').replace('is:issue ', '')
-            
+
             # Parse query string and convert to command-line flags
             flags = self._parse_search_query(query)
 
