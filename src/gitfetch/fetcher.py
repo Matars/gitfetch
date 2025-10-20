@@ -232,11 +232,17 @@ class GitHubFetcher:
     def _search_items(self, query: str, per_page: int = 5) -> Dict[str, Any]:
         """Search issues and PRs using GitHub CLI search command."""
         try:
+            # Determine search type based on query
+            search_type = 'prs' if 'is:pr' in query else 'issues'
+            
+            # Remove is:pr/issue from query as it's implied by search type
+            query = query.replace('is:pr ', '').replace('is:issue ', '')
+            
             # Parse query string and convert to command-line flags
             flags = self._parse_search_query(query)
 
             # Build command with proper flags
-            cmd = ['gh', 'search', 'issues'] + flags + [
+            cmd = ['gh', 'search', search_type] + flags + [
                 '--limit', str(per_page),
                 '--json', 'number,title,repository,url,state'
             ]
@@ -293,9 +299,9 @@ class GitHubFetcher:
                     flags.extend(['--state', value])
                 elif key == 'is':
                     # Handle is:pr and is:issue
-                    if value == 'pr':
-                        flags.append('--include-prs')
-                    # is:issue is default, no flag needed
+                    # For prs search, we don't need this flag
+                    # For issues search, is:issue is default
+                    pass
                 else:
                     # For other qualifiers, add as search term
                     flags.append(part)
