@@ -364,8 +364,8 @@ class DisplayFormatter:
         filled = min(filled, width)
         empty = width - filled
 
-        filled_segment = "█" * filled
-        empty_segment = "░" * empty
+        filled_segment = "▰" * filled
+        empty_segment = "▱" * empty
 
         if self.enable_color and filled_segment:
             filled_segment = self._colorize(filled_segment, 'green')
@@ -381,8 +381,8 @@ class DisplayFormatter:
         filled = min(filled, width)
         empty = width - filled
 
-        filled_segment = "█" * filled
-        empty_segment = "░" * empty
+        filled_segment = "▰" * filled
+        empty_segment = "▱" * empty
 
         if self.enable_color and filled_segment:
             filled_segment = self._colorize(filled_segment, 'green')

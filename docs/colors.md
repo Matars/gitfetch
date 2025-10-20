@@ -39,12 +39,12 @@ Colors can be specified using either ANSI escape codes or color names. Examples:
 
 ```ini
 [COLORS]
-red = red
-green = green
-blue = blue
-yellow = yellow
-header = cyan
+header = blue
+red = bright_red
+green = cyan
+yellow = orange
 muted = gray
+accent = magenta
 ```
 
 ### Using ANSI Codes
