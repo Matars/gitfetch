@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "GPL-2.0"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Matar", email = "khaledmatar19733@gmail.com"}
 ]
 keywords = ["github", "cli", "statistics", "neofetch"]
 classifiers = [
