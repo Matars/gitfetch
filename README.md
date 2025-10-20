@@ -110,7 +110,7 @@ gitfetch
 This creates:
 
 - `~/.config/gitfetch/gitfetch.conf` - Configuration file
-- `~/.config/gitfetch/cache.db` - SQLite cache database
+- `~/.local/share/gitfetch/cache.db` - SQLite cache database
 
 ## Usage
 
@@ -269,10 +269,9 @@ Changes take effect immediately - no restart required.
 
 ## Caching
 
-Cache database location: `~/.config/gitfetch/cache.db`
+Cache database location: `~/.local/share/gitfetch/cache.db`
 
-This will be moved in the future to a more standard location based on OS conventions.
-This will also come with a gitfetch --migrate-cache command to migrate existing cache to the new location.
+This follows XDG Base Directory specification for application data.
 
 ## Why GitHub CLI?
 
