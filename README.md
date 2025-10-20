@@ -1,4 +1,5 @@
 # gitfetch
+
 A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
 
 <img width="3024" height="1964" alt="image" src="https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0" />
@@ -46,8 +47,21 @@ You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 
 ## Installing `gitfetch`
 
+### macOS (Homebrew)
+
+```bash
+brew tap matars/homebrew-gitfetch
+brew install gitfetch
+```
+
+Or install directly without tapping:
+
+```bash
+brew install matars/homebrew-gitfetch/gitfetch
+```
+
 ### From the sources
-  
+
 1. Clone this repo
 2. `cd` into the repo
 3. Then type the below command

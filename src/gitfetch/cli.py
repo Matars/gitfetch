@@ -10,6 +10,7 @@ from .fetcher import GitHubFetcher
 from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
+from . import __version__
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0"
+        version=f"%(prog)s {__version__}"
     )
 
     return parser.parse_args()
