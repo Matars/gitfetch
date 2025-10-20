@@ -1,0 +1,54 @@
+name: Update Homebrew Formula
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-homebrew:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          repository: Matars/gitfetch
+          path: gitfetch
+
+      - name: Get version from pyproject.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' gitfetch/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download release tarball
+        run: |
+          curl -L -o release.tar.gz https://github.com/Matars/gitfetch/archive/refs/tags/v${{ steps.get_version.outputs.version }}.tar.gz
+
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          SHA256=$(shasum -a 256 release.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: Matars/homebrew-gitfetch
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          sed -i 's|url "https://github.com/Matars/gitfetch/archive/refs/tags/v.*"|url "https://github.com/Matars/gitfetch/archive/refs/tags/v${{ steps.get_version.outputs.version }}"|' homebrew-tap/Formula/gitfetch.rb
+          sed -i 's|version ".*"|version "${{ steps.get_version.outputs.version }}"|' homebrew-tap/Formula/gitfetch.rb
+          sed -i 's|sha256 ".*"|sha256 "${{ steps.sha256.outputs.sha256 }}"|' homebrew-tap/Formula/gitfetch.rb
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Formula/gitfetch.rb
+          git commit -m "Update gitfetch to v${{ steps.get_version.outputs.version }}"
+          git push
