@@ -50,6 +50,7 @@ You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 ### macOS (Homebrew)
 
 ```bash
+brew tap matars/gitfetch
 brew install matars/gitfetch/gitfetch
 ```
 
