@@ -81,7 +81,7 @@ def main() -> int:
                     print(
                         f"\033[93mUpdate available: {latest}\n"
                         "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                        "Or run: brew upgrade gitfetch\033[0m")
+                        "Or run: brew update && brew upgrade gitfetch\033[0m")
                 else:
                     print("You are using the latest version.")
             else:
