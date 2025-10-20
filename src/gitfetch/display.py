@@ -10,17 +10,18 @@ import unicodedata
 from datetime import datetime
 from .config import ConfigManager
 
+
 class DisplayFormatter:
     """Formats and displays GitHub stats in a neofetch-style layout."""
 
-    def __init__(self,config_manager: ConfigManager):
+    def __init__(self, config_manager: ConfigManager):
         """Initialize the display formatter."""
         self.terminal_width = shutil.get_terminal_size().columns
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_colors()
 
     def display(self, username: str, user_data: Dict[str, Any],
-                stats: Dict[str, Any],spaced=True) -> None:
+                stats: Dict[str, Any], spaced=True) -> None:
         """
         Display GitHub statistics in neofetch style.
 
@@ -35,13 +36,13 @@ class DisplayFormatter:
 
         if layout == 'minimal':
             # Only show contribution graph
-            self._display_minimal(username, stats,spaced)
+            self._display_minimal(username, stats, spaced)
         elif layout == 'compact':
             # Show graph and key info
-            self._display_compact(username, user_data, stats,spaced)
+            self._display_compact(username, user_data, stats, spaced)
         else:
             # Full layout with all sections
-            self._display_full(username, user_data, stats,spaced)
+            self._display_full(username, user_data, stats, spaced)
 
         print()  # Empty line at the end
 
@@ -68,11 +69,11 @@ class DisplayFormatter:
             print(line)
 
     def _display_compact(self, username: str, user_data: Dict[str, Any],
-                         stats: Dict[str, Any], spaced= True) -> None:
-        """Display graph and minimal info side-by-side."""
+                         stats: Dict[str, Any], spaced=True) -> None:
+        """Display graph and minimal info side-by-side (no languages)."""
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        graph_width = max(40, (self.terminal_width - 10) // 2)
+        graph_width = max(40, (self.terminal_width - 40) // 2)
         graph_lines = self._get_contribution_graph_lines(
             contrib_graph,
             username,
@@ -84,7 +85,6 @@ class DisplayFormatter:
         info_lines = self._format_user_info_compact(user_data, stats)
         achievements = self._build_achievements(recent_weeks)
 
-        # Combine sections
         right_side = list(info_lines)
         if achievements:
             right_side.append("")
@@ -96,7 +96,6 @@ class DisplayFormatter:
             graph_part = (graph_lines[i] if i < len(graph_lines) else "")
             graph_len = self._display_width(graph_part)
             padding = " " * max(0, graph_width - graph_len)
-
             info_part = (right_side[i] if i < len(right_side) else "")
             print(f"{graph_part}{padding}  {info_part}")
 
@@ -116,11 +115,17 @@ class DisplayFormatter:
         pull_request_lines = self._format_pull_requests(stats)
         issue_lines = self._format_issues(stats)
 
-        section_columns = [
-            pull_request_lines,
-            issue_lines,
-        ]
-
+        # Only show PR/Issue columns if they fit side by side, otherwise show neither
+        section_columns = []
+        if pull_request_lines and issue_lines:
+            pr_width = max((self._display_width(line)
+                           for line in pull_request_lines), default=0)
+            issue_width = max((self._display_width(line)
+                              for line in issue_lines), default=0)
+            total_width = pr_width + issue_width + len("   ")  # gap
+            if total_width <= graph_width:
+                section_columns = [pull_request_lines, issue_lines]
+        # Do not show only one column; only show both if they fit
         combined_sections = self._combine_section_grid(
             section_columns, width_limit=graph_width
         )
@@ -132,7 +137,7 @@ class DisplayFormatter:
         language_lines = self._format_languages(stats)
 
         right_side = list(info_lines)
-        if language_lines:
+        if language_lines and self.terminal_width >= 120:
             right_side.append("")
             right_side.extend(language_lines)
 
