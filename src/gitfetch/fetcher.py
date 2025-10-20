@@ -47,6 +47,33 @@ class GitHubFetcher:
             print("Error: gh CLI command timed out", file=sys.stderr)
             sys.exit(1)
 
+    def get_authenticated_user(self) -> str:
+        """
+        Get the authenticated GitHub username.
+
+        Returns:
+            The login of the authenticated user
+        """
+        try:
+            result = subprocess.run(
+                ['gh', 'auth', 'status', '--json', 'hosts'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                raise Exception("Failed to get auth status")
+
+            data = json.loads(result.stdout)
+            hosts = data.get('hosts', {})
+            github_com = hosts.get('github.com', [])
+            if github_com and len(github_com) > 0:
+                return github_com[0]['login']
+            else:
+                raise Exception("No GitHub.com auth found")
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+            raise Exception("Could not determine authenticated user")
+
     def _gh_api(self, endpoint: str, method: str = "GET") -> Any:
         """
         Call GitHub API using gh CLI.

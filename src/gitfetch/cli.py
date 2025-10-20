@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable spaced layout"
     )
-    
+
     parser.add_argument(
         "--not-spaced",
         action="store_true",
@@ -126,10 +126,17 @@ def main() -> int:
         # Try to get default username from config
         username = config_manager.get_default_username()
         if not username:
-            username = _prompt_username()
-            if not username:
-                print("Error: Username is required", file=sys.stderr)
-                return 1
+            # Fall back to authenticated user
+            try:
+                username = fetcher.get_authenticated_user()
+                # Save as default for future use
+                config_manager.set_default_username(username)
+                config_manager.save()
+            except Exception:
+                username = _prompt_username()
+                if not username:
+                    print("Error: Username is required", file=sys.stderr)
+                    return 1
 
     # Fetch data (with or without cache)
     try:
@@ -147,7 +154,8 @@ def main() -> int:
                 stale_stats = cache_manager.get_stale_cached_stats(username)
                 if stale_user_data is not None and stale_stats is not None:
                     # Display stale cache immediately
-                    formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
+                    formatter.display(username, stale_user_data,
+                                      stale_stats, spaced=spaced)
                     print("\n🔄 Refreshing data in background...",
                           file=sys.stderr)
 
@@ -195,8 +203,8 @@ def _prompt_username() -> Optional[str]:
 
 def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
     """
-    Initialize gitfetch by creating config directory and asking for
-    default username.
+    Initialize gitfetch by creating config directory and setting
+    the authenticated user as default.
 
     Args:
         config_manager: ConfigManager instance
@@ -205,14 +213,14 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         True if initialization succeeded, False otherwise
     """
     try:
-        # Prompt for default username
-        print("Please enter your default GitHub username.")
-        print("(You can override this later by passing a username as "
-              "an argument)")
-        username = input("\nGitHub username: ").strip()
-
-        if not username:
-            print("Error: Username cannot be empty", file=sys.stderr)
+        # Try to get authenticated user from GitHub CLI
+        fetcher = GitHubFetcher()
+        try:
+            username = fetcher.get_authenticated_user()
+            print(f"Using authenticated GitHub user: {username}")
+        except Exception as e:
+            print(f"Could not get authenticated user: {e}")
+            print("Please ensure GitHub CLI is authenticated with: gh auth login")
             return False
 
         # Save configuration
@@ -221,9 +229,6 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
 
         return True
 
-    except (KeyboardInterrupt, EOFError):
-        print("\nInitialization cancelled.")
-        return False
     except Exception as e:
         print(f"Error during initialization: {e}", file=sys.stderr)
         return False
