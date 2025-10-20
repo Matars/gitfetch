@@ -60,6 +60,27 @@ Or install directly without tapping:
 brew install matars/homebrew-gitfetch/gitfetch
 ```
 
+### Arch Linux (AUR)
+
+```bash
+yay -S gitfetch
+```
+
+Or with other AUR helpers:
+
+```bash
+paru -S gitfetch
+trizen -S gitfetch
+```
+
+Or manual build:
+
+```bash
+git clone https://aur.archlinux.org/gitfetch.git
+cd gitfetch
+makepkg -si
+```
+
 ### From the sources
 
 1. Clone this repo
