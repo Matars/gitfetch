@@ -45,6 +45,13 @@ You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 
 ## Installing `gitfetch`
 
+
+### From the sources
+  
+1. Clone this repo
+2. `cd` into the repo
+3. Then type the below command
+
 ### With `uv`
 
 ```bash
@@ -56,12 +63,6 @@ uv tool install git+https://github.com/Matars/gitfetch
 ```bash
 pipx install git+https://github.com/Matars/gitfetch
 ```
-
-### From the sources
-  
-1. Clone this repo
-2. `cd` into the repo
-3. Then type the below command
 
 ```bash
 pip install -e .
