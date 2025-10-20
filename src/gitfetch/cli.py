@@ -119,7 +119,7 @@ def main() -> int:
             cache_manager.cache_user_data(username, user_data, stats)
         else:
             user_data = cache_manager.get_cached_user_data(username)
-            stats = cache_manager.get_cached_user_stats(username)
+            stats = cache_manager.get_cached_stats(username)
             if user_data is None or stats is None:
                 # Try to get stale cache for immediate display
                 stale_user_data = cache_manager.get_stale_cached_user_data(
