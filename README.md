@@ -162,26 +162,6 @@ Install GitHub CLI:
 gh auth status
 ```
 
-## Project Structure
-
-```
-gitfetch/
-├── src/
-│   └── gitfetch/
-│       ├── __init__.py      # Package initialization
-│       ├── cli.py           # Command-line interface
-│       ├── fetcher.py       # GitHub API data fetching
-│       ├── display.py       # Display formatting
-│       ├── cache.py         # SQLite cache management
-│       └── config.py        # Configuration management
-├── tests/
-│   ├── test_fetcher.py      # Fetcher unit tests
-│   ├── test_cache.py        # Cache unit tests
-│   └── test_config.py       # Config unit tests
-├── pyproject.toml           # Project configuration
-└── README.md                # This file
-```
-
 ## Configuration
 
 Configuration file location: `~/.config/gitfetch/gitfetch.conf`
