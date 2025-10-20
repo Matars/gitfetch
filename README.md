@@ -1,4 +1,4 @@
-tap# gitfetch
+# gitfetch
 
 A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
 
