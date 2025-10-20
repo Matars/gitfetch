@@ -43,7 +43,12 @@ gh auth status
 
 You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 
-## Installation
+## Installing `gitfetch`
+
+
+1. Clone this repo
+2. `cd` into the repo
+3. Then type the below command
 
 ```bash
 pip install -e .
