@@ -47,7 +47,7 @@ class DisplayFormatter:
         """Determine layout based on terminal width."""
         if self.terminal_width < 80:
             return 'minimal'
-        elif self.terminal_width < 140:
+        elif self.terminal_width < 100:
             return 'compact'
         else:
             return 'full'

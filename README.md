@@ -1,4 +1,4 @@
-# gitfetch
+tap# gitfetch
 
 A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
 
@@ -50,14 +50,7 @@ You should see: `✓ Logged in to github.com as YOUR_USERNAME`
 ### macOS (Homebrew)
 
 ```bash
-brew tap matars/homebrew-gitfetch
-brew install gitfetch
-```
-
-Or install directly without tapping:
-
-```bash
-brew install matars/homebrew-gitfetch/gitfetch
+brew install matars/gitfetch/gitfetch
 ```
 
 ### Arch Linux (AUR)
