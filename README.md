@@ -55,6 +55,8 @@ brew install matars/gitfetch/gitfetch
 
 ### Arch Linux (AUR)
 
+## Note: currenly not working, use local installation - AUR packagte will be fixed soon
+
 ```bash
 yay -S gitfetch
 ```
