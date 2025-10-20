@@ -68,7 +68,9 @@ def main() -> int:
                 latest = resp.json()["tag_name"].lstrip("v")
                 if latest != __version__:
                     print(
-                        f"\033[93mUpdate available: {latest}. Get it at https://github.com/Matars/gitfetch/releases/latest\033[0m")
+                        f"\033[93mUpdate available: {latest}\n"
+                        "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                        "Or run: brew upgrade gitfetch\033[0m")
                 else:
                     print("You are using the latest version.")
             else:
