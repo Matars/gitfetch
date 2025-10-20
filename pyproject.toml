@@ -41,9 +41,9 @@ dev = [
 gitfetch = "gitfetch.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/gitfetch"
-Repository = "https://github.com/yourusername/gitfetch"
-Issues = "https://github.com/yourusername/gitfetch/issues"
+Homepage = "https://github.com/Matars/gitfetch"
+Repository = "https://github.com/Matars/gitfetch"
+Issues = "https://github.com/Matars/gitfetch/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
