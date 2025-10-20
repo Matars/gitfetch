@@ -276,6 +276,10 @@ class DisplayFormatter:
 
         add_line('Company', user_data.get('company'))
         add_line('Website', user_data.get('blog'))
+        # Add stars amount under website
+        total_stars = stats.get('total_stars')
+        if total_stars is not None:
+            add_line('Stars', str(total_stars))
 
         return lines
 
@@ -310,6 +314,9 @@ class DisplayFormatter:
         )[:5]
 
         for lang, percentage in sorted_langs:
+            # Reword 'Jupyter notebook' to 'Jupyter'
+            if lang.lower() == 'jupyter notebook':
+                lang = 'Jupyter'
             lines.append(self._format_language_line(lang, percentage))
 
         return lines
