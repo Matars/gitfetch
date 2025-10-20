@@ -20,6 +20,9 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 
 **GitHub CLI (gh) must be installed and authenticated:**
 
+See installation instructions at: https://github.com/cli/cli#installation
+
+
 ### macOS
 
 ```bash
@@ -28,8 +31,6 @@ gh auth login
 ```
 
 ### Linux
-
-See installation instructions at: https://github.com/cli/cli#installation
 
 Then authenticate:
 
