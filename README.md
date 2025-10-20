@@ -109,20 +109,6 @@ Install GitHub CLI:
 gh auth status
 ```
 
-## Development
-
-Install with development dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
-
-Run tests:
-
-```bash
-pytest
-```
-
 ## Project Structure
 
 ```
@@ -152,7 +138,7 @@ Example configuration:
 ```ini
 [DEFAULT]
 username = yourusername
-cache_expiry_hours = 24
+cache_expiry_hours = 6
 ```
 
 Cache database location: `~/.config/gitfetch/cache.db`
