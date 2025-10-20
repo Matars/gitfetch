@@ -49,7 +49,8 @@ class ConfigManager:
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
             if "COLORS" in self.config:
-                self.config._sections['COLORS'] = {**default_colors, **self.config._sections['COLORS']}
+                self.config._sections['COLORS'] = {
+                    **default_colors, **self.config._sections['COLORS']}
             else:
                 self.config._sections['COLORS'] = default_colors
         else:
@@ -58,9 +59,12 @@ class ConfigManager:
                 'username': '',
                 'cache_expiry_hours': '24'
             }
-            self.config._sections['COLORS'] = default_colors
-        for k,v in self.config._sections['COLORS'].items():
-            self.config._sections['COLORS'][k] = v.encode('utf-8').decode('unicode_escape')
+            self.config.add_section('COLORS')
+            for key, value in default_colors.items():
+                self.config.set('COLORS', key, value)
+        for k, v in self.config._sections['COLORS'].items():
+            self.config._sections['COLORS'][k] = v.encode(
+                'utf-8').decode('unicode_escape')
 
     def get_default_username(self) -> Optional[str]:
         """
