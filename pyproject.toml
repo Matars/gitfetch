@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitfetch"
-version = "1.0.20"
+version = "1.1.0"
 description = "A neofetch-style CLI tool for GitHub statistics"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -27,7 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "requests>=2.0.0"
+    "requests>=2.0.0",
+    "readchar>=4.0.0"
 ]
 
 [project.optional-dependencies]
@@ -49,6 +50,9 @@ Issues = "https://github.com/Matars/gitfetch/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+gitfetch = ["docs/*.md"]
 
 [tool.black]
 line-length = 100
