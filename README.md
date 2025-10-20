@@ -7,7 +7,7 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 - Neofetch-style display with ASCII art
 - Comprehensive GitHub statistics
 - Smart SQLite-based caching system for faster subsequent runs
--  Persistent configuration with default username support
+- Persistent configuration with default username support
 - Uses GitHub CLI (gh) for authentication - no rate limits!
 - Cross-platform support (macOS and Linux)
 - First-run initialization with interactive setup
@@ -173,4 +173,4 @@ Using the GitHub CLI (gh) instead of direct API calls provides several benefits:
 
 ## License
 
-MIT
+GPL-2.0

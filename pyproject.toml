@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "A neofetch-style CLI tool for GitHub statistics"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = {text = "GPL-2.0"}
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
@@ -16,7 +16,7 @@ keywords = ["github", "cli", "statistics", "neofetch"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
