@@ -44,6 +44,18 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--spaced",
+        action="store_true",
+        help="Enable spaced layout"
+    )
+    
+    parser.add_argument(
+        "--not-spaced",
+        action="store_true",
+        help="Disable spaced layout"
+    )
+
+    parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s 0.1.0"
@@ -71,7 +83,13 @@ def main() -> int:
     cache_expiry = config_manager.get_cache_expiry_hours()
     cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
     fetcher = GitHubFetcher()  # Uses gh CLI, no token needed
-    formatter = DisplayFormatter()
+    formatter = DisplayFormatter(config_manager)
+    if args.spaced:
+        spaced = True
+    elif args.not_spaced:
+        spaced = False
+    else:
+        spaced = True
 
     # Handle cache clearing
     if args.clear_cache:
@@ -110,7 +128,7 @@ def main() -> int:
 
                 if stale_user_data is not None and stale_stats is not None:
                     # Display stale cache immediately
-                    formatter.display(username, stale_user_data, stale_stats)
+                    formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
                     print("\n🔄 Refreshing data in background...",
                           file=sys.stderr)
 
@@ -142,7 +160,7 @@ def main() -> int:
             # else: fresh cache available, proceed to display
 
         # Display the results
-        formatter.display(username, user_data, stats)
+        formatter.display(username, user_data, stats, spaced=spaced)
 
         return 0
 
