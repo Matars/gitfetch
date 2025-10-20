@@ -8,18 +8,19 @@ import sys
 import re
 import unicodedata
 from datetime import datetime
-
+from .config import ConfigManager
 
 class DisplayFormatter:
     """Formats and displays GitHub stats in a neofetch-style layout."""
 
-    def __init__(self):
+    def __init__(self,config_manager: ConfigManager):
         """Initialize the display formatter."""
         self.terminal_width = shutil.get_terminal_size().columns
         self.enable_color = sys.stdout.isatty()
+        self.colors = config_manager.get_colors()
 
     def display(self, username: str, user_data: Dict[str, Any],
-                stats: Dict[str, Any]) -> None:
+                stats: Dict[str, Any],spaced=True) -> None:
         """
         Display GitHub statistics in neofetch style.
 
@@ -27,19 +28,20 @@ class DisplayFormatter:
             username: GitHub username
             user_data: User profile data
             stats: User statistics data
+            spaced: Spaced layout
         """
         # Determine layout based on terminal width
         layout = self._determine_layout()
 
         if layout == 'minimal':
             # Only show contribution graph
-            self._display_minimal(username, stats)
+            self._display_minimal(username, stats,spaced)
         elif layout == 'compact':
             # Show graph and key info
-            self._display_compact(username, user_data, stats)
+            self._display_compact(username, user_data, stats,spaced)
         else:
             # Full layout with all sections
-            self._display_full(username, user_data, stats)
+            self._display_full(username, user_data, stats,spaced)
 
         print()  # Empty line at the end
 
@@ -52,20 +54,21 @@ class DisplayFormatter:
         else:
             return 'full'
 
-    def _display_minimal(self, username: str, stats: Dict[str, Any]) -> None:
+    def _display_minimal(self, username: str, stats: Dict[str, Any], spaced=True) -> None:
         """Display only contribution graph for narrow terminals."""
         contrib_graph = stats.get('contribution_graph', [])
         graph_lines = self._get_contribution_graph_lines(
             contrib_graph,
             username,
             width_constraint=self.terminal_width - 4,
-            include_sections=False
+            include_sections=False,
+            spaced=spaced,
         )
         for line in graph_lines:
             print(line)
 
     def _display_compact(self, username: str, user_data: Dict[str, Any],
-                         stats: Dict[str, Any]) -> None:
+                         stats: Dict[str, Any], spaced= True) -> None:
         """Display graph and minimal info side-by-side."""
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
@@ -74,7 +77,8 @@ class DisplayFormatter:
             contrib_graph,
             username,
             width_constraint=graph_width,
-            include_sections=False
+            include_sections=False,
+            spaced=spaced,
         )
 
         info_lines = self._format_user_info_compact(user_data, stats)
@@ -97,7 +101,7 @@ class DisplayFormatter:
             print(f"{graph_part}{padding}  {info_part}")
 
     def _display_full(self, username: str, user_data: Dict[str, Any],
-                      stats: Dict[str, Any]) -> None:
+                      stats: Dict[str, Any], spaced=True) -> None:
         """Display full layout with graph and all info sections."""
         contrib_graph = stats.get('contribution_graph', [])
         graph_width = max(50, (self.terminal_width - 10) // 2)
@@ -105,7 +109,8 @@ class DisplayFormatter:
             contrib_graph,
             username,
             width_constraint=graph_width,
-            include_sections=False
+            include_sections=False,
+            spaced=spaced,
         )
 
         pull_request_lines = self._format_pull_requests(stats)
@@ -152,7 +157,8 @@ class DisplayFormatter:
     def _get_contribution_graph_lines(self, weeks_data: list,
                                       username: str,
                                       width_constraint: int = None,
-                                      include_sections: bool = True) -> list:
+                                      include_sections: bool = True,
+                                      spaced: bool = True) -> list:
         """
         Get contribution graph as lines for display.
 
@@ -187,7 +193,10 @@ class DisplayFormatter:
             for idx in range(7):
                 day = days[idx] if idx < len(days) else {}
                 count = day.get('contributionCount', 0)
-                block = self._get_contribution_block_spaced(count)
+                if spaced:
+                    block = self._get_contribution_block_spaced(count)
+                else:
+                    block = self._get_contribution_block(count)
                 day_rows[idx].append(block)
 
         lines = [*header_lines]
@@ -825,22 +834,7 @@ class DisplayFormatter:
         if not text:
             return text
 
-        colors = {
-            'reset': '\033[0m',
-            'bold': '\033[1m',
-            'dim': '\033[2m',
-            'red': '\033[91m',
-            'green': '\033[92m',
-            'yellow': '\033[93m',
-            'blue': '\033[94m',
-            'magenta': '\033[95m',
-            'cyan': '\033[96m',
-            'white': '\033[97m',
-            'orange': '\033[38;2;255;165;0m',
-            'accent': '\033[1m',
-            'header': '\033[38;2;118;215;161m',
-            'muted': '\033[2m'
-        }
+        colors = self.colors
 
         color_code = colors.get(color.lower())
         reset = colors['reset']
@@ -882,15 +876,15 @@ class DisplayFormatter:
 
         reset = '\033[0m'
         if count == 0:
-            color = '\033[48;5;238m'
+            color = self.colors['0']
         elif count < 3:
-            color = '\033[48;5;28m'
+            color = self.colors['1']
         elif count < 7:
-            color = '\033[48;5;34m'
+            color = self.colors['2']
         elif count < 13:
-            color = '\033[48;5;40m'
+            color = self.colors['3']
         else:
-            color = '\033[48;5;82m'
+            color = self.colors['4']
 
         return f"{color}  {reset}"
 

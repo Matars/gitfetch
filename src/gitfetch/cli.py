@@ -45,6 +45,18 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--spaced",
+        action="store_true",
+        help="Enable spaced layout"
+    )
+    
+    parser.add_argument(
+        "--not-spaced",
+        action="store_true",
+        help="Disable spaced layout"
+    )
+
+    parser.add_argument(
         "--version",
         action="store_true",
         help="Show version and check for updates"
@@ -94,7 +106,13 @@ def main() -> int:
     cache_expiry = config_manager.get_cache_expiry_hours()
     cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
     fetcher = GitHubFetcher()  # Uses gh CLI, no token needed
-    formatter = DisplayFormatter()
+    formatter = DisplayFormatter(config_manager)
+    if args.spaced:
+        spaced = True
+    elif args.not_spaced:
+        spaced = False
+    else:
+        spaced = True
 
     # Handle cache clearing
     if args.clear_cache:
@@ -128,8 +146,12 @@ def main() -> int:
                     username)
                 stale_stats = cache_manager.get_stale_cached_stats(username)
                 if stale_user_data is not None and stale_stats is not None:
-                    formatter.display(username, stale_user_data, stale_stats)
-                    print("\n🔄 Refreshing data in background...", file=sys.stderr)
+                    # Display stale cache immediately
+                    formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
+                    print("\n🔄 Refreshing data in background...",
+                          file=sys.stderr)
+
+                    # Refresh cache in background (don't wait for it)
                     import threading
 
                     def refresh_cache():
@@ -150,7 +172,11 @@ def main() -> int:
                     user_data = fetcher.fetch_user_data(username)
                     stats = fetcher.fetch_user_stats(username, user_data)
                     cache_manager.cache_user_data(username, user_data, stats)
-        formatter.display(username, user_data, stats)
+            # else: fresh cache available, proceed to display
+
+        # Display the results
+        formatter.display(username, user_data, stats, spaced=spaced)
+
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

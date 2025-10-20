@@ -25,14 +25,42 @@ class ConfigManager:
 
     def _load_config(self) -> None:
         """Load configuration from file."""
+        default_colors = {
+            'reset': '\\033[0m',
+            'bold': '\\033[1m',
+            'dim': '\\033[2m',
+            'red': '\\033[91m',
+            'green': '\\033[92m',
+            'yellow': '\\033[93m',
+            'blue': '\\033[94m',
+            'magenta': '\\033[95m',
+            'cyan': '\\033[96m',
+            'white': '\\033[97m',
+            'orange': '\\033[38;2;255;165;0m',
+            'accent': '\\033[1m',
+            'header': '\\033[38;2;118;215;161m',
+            'muted': '\\033[2m',
+            '0': '\\033[48;5;238m',
+            '1': '\\033[48;5;28m',
+            '2': '\\033[48;5;34m',
+            '3': '\\033[48;5;40m',
+            '4': '\\033[48;5;82m'
+        }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
+            if "COLORS" in self.config:
+                self.config._sections['COLORS'] = {**default_colors, **self.config._sections['COLORS']}
+            else:
+                self.config._sections['COLORS'] = default_colors
         else:
             # Create default config
             self.config['DEFAULT'] = {
                 'username': '',
                 'cache_expiry_hours': '24'
             }
+            self.config._sections['COLORS'] = default_colors
+        for k,v in self.config._sections['COLORS'].items():
+            self.config._sections['COLORS'][k] = v.encode('utf-8').decode('unicode_escape')
 
     def get_default_username(self) -> Optional[str]:
         """
@@ -43,6 +71,15 @@ class ConfigManager:
         """
         username = self.config.get('DEFAULT', 'username', fallback='')
         return username if username else None
+
+    def get_colors(self) -> dict:
+        """
+        Get colors
+
+        Returns:
+            User defined colors or default colors if not set
+        """
+        return self.config._sections["COLORS"]
 
     def set_default_username(self, username: str) -> None:
         """
