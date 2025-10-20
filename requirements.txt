@@ -1,3 +1,4 @@
 # No Python dependencies required
 # Requires GitHub CLI (gh) to be installed and authenticated
 requests>=2.0.0
+readchar>=4.0.0

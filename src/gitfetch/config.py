@@ -126,12 +126,84 @@ class ConfigManager:
         Check if gitfetch has been initialized.
 
         Returns:
-            True if config exists and has default username
+            True if config exists and has default username and provider
         """
-        return self.CONFIG_FILE.exists() and bool(self.get_default_username())
+        return (self.CONFIG_FILE.exists() and
+                bool(self.get_default_username()) and
+                bool(self.get_provider()))
+
+    def get_provider(self) -> Optional[str]:
+        """
+        Get the git provider from config.
+
+        Returns:
+            Provider name (github, gitlab, gitea, etc.) or None if not set
+        """
+        provider = self.config.get('DEFAULT', 'provider', fallback='')
+        return provider if provider else None
+
+    def set_provider(self, provider: str) -> None:
+        """
+        Set the git provider in config.
+
+        Args:
+            provider: Git provider name (github, gitlab, gitea, etc.)
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['provider'] = provider
+
+    def get_provider_url(self) -> Optional[str]:
+        """
+        Get the provider base URL from config.
+
+        Returns:
+            Base URL for the git provider or None if not set
+        """
+        url = self.config.get('DEFAULT', 'provider_url', fallback='')
+        return url if url else None
+
+    def set_provider_url(self, url: str) -> None:
+        """
+        Set the provider base URL in config.
+
+        Args:
+            url: Base URL for the git provider
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['provider_url'] = url
 
     def save(self) -> None:
         """Save configuration to file."""
+        import os
         self._ensure_config_dir()
+        # Remove the file if it exists to ensure clean write
+        if self.CONFIG_FILE.exists():
+            os.remove(self.CONFIG_FILE)
         with open(self.CONFIG_FILE, 'w') as f:
-            self.config.write(f)
+            f.write("# gitfetch configuration file\n")
+            f.write("# See docs/providers.md for provider configuration\n")
+            f.write("# See docs/colors.md for color customization\n\n")
+
+            f.write("[DEFAULT]\n")
+            username = self.config.get('DEFAULT', 'username', fallback='')
+            f.write(f"username = {username}\n\n")
+
+            cache_hours = self.config.get('DEFAULT', 'cache_expiry_hours',
+                                          fallback='24')
+            f.write(f"cache_expiry_hours = {cache_hours}\n\n")
+
+            provider = self.config.get('DEFAULT', 'provider', fallback='')
+            f.write(f"provider = {provider}\n\n")
+
+            provider_url = self.config.get('DEFAULT', 'provider_url',
+                                           fallback='')
+            f.write(f"provider_url = {provider_url}\n\n")
+
+            if 'COLORS' in self.config:
+                f.write("[COLORS]\n")
+                for key, value in self.config['COLORS'].items():
+                    f.write(f"{key} = {value}\n")
+                f.write("\n")
+            f.write("\n")

@@ -1,6 +1,6 @@
 # gitfetch
 
-A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and stats in a beautiful, colorful terminal interface.
+A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics. Display your profile and stats from various git hosting platforms in a beautiful, colorful terminal interface.
 
 <img width="3024" height="1964" alt="image" src="https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0" />
 
@@ -9,41 +9,33 @@ A neofetch-style CLI tool for GitHub statistics. Display your GitHub profile and
 ## Features
 
 - Neofetch-style display with ASCII art
-- Comprehensive GitHub statistics
+- Comprehensive statistics from multiple git hosting platforms
 - Smart SQLite-based caching system for faster subsequent runs
 - Persistent configuration with default username support
-- Uses GitHub CLI (gh) for authentication - no rate limits!
 - Cross-platform support (macOS and Linux)
-- First-run initialization with interactive setup
+- First-run initialization with interactive provider selection
 
-## Prerequisites
+## Supported Platforms
 
-**GitHub CLI (gh) must be installed and authenticated:**
+- **GitHub** - Uses GitHub CLI (gh) for authentication
+- **GitLab** - Uses GitLab CLI (glab) for authentication
+- **Gitea/Forgejo/Codeberg** - Uses personal access tokens
+- **Sourcehut** - Uses personal access tokens
 
-See installation instructions at: https://github.com/cli/cli#installation
+## Installation
 
-### macOS
+`gitfetch` can be installed without any prerequisites. During first-run setup, you'll be guided to install and authenticate with the necessary CLI tools or provide access tokens for your chosen git hosting platform.
 
-```bash
-brew install gh
-gh auth login
-```
+## First-run Setup
 
-### Linux
+When you run `gitfetch` for the first time, you'll be prompted to:
 
-Then authenticate:
+1. **Choose your git hosting provider** (GitHub, GitLab, Gitea/Forgejo/Codeberg, or Sourcehut)
+2. **Install required CLI tools** (if using GitHub or GitLab)
+3. **Authenticate** with your chosen platform
+4. **Configure access tokens** (if using Gitea/Forgejo/Codeberg or Sourcehut)
 
-```bash
-gh auth login
-```
-
-### Verify Installation
-
-```bash
-gh auth status
-```
-
-You should see: `✓ Logged in to github.com as YOUR_USERNAME`
+The setup process will provide helpful error messages and installation instructions if anything is missing.
 
 ## Installing `gitfetch`
 
@@ -165,7 +157,7 @@ gh auth status
 
 Configuration file location: `~/.config/gitfetch/gitfetch.conf`
 
-The configuration file is automatically created on first run and contains two main sections:
+The configuration file is automatically created on first run. See `docs/providers.md` for detailed provider configuration and `docs/colors.md` for color customization options.
 
 ### [DEFAULT] Section
 
@@ -173,99 +165,39 @@ The configuration file is automatically created on first run and contains two ma
 [DEFAULT]
 username = yourusername
 cache_expiry_hours = 24
+provider = github
+provider_url = https://api.github.com
 ```
 
-- `username`: Your default GitHub username (automatically set from authenticated GitHub CLI user)
+- `username`: Your default username (automatically detected)
 - `cache_expiry_hours`: How long to keep cached data (default: 24 hours)
+- `provider`: Git hosting provider (github, gitlab, gitea, sourcehut)
+- `provider_url`: API URL for the provider
 
 ### [COLORS] Section
 
-gitfetch supports extensive color customization. All colors use ANSI escape codes.
+gitfetch supports extensive color customization. All colors use ANSI escape codes. See `docs/colors.md` for detailed color configuration options.
 
+````ini
 ```ini
 [COLORS]
 reset = \033[0m
 bold = \033[1m
-dim = \033[2m
-red = \033[91m
-green = \033[92m
-yellow = \033[93m
-blue = \033[94m
-magenta = \033[95m
-cyan = \033[96m
-white = \033[97m
-orange = \033[38;2;255;165;0m
-accent = \033[1m
-header = \033[38;2;118;215;161m
-muted = \033[2m
-0 = \033[48;5;238m
-1 = \033[48;5;28m
-2 = \033[48;5;34m
-3 = \033[48;5;40m
-4 = \033[48;5;82m
-```
+# ... color definitions ...
+````
 
-#### Color Reference
+See `docs/colors.md` for detailed color configuration options and customization examples.
 
-- **Text Styles**:
+## Supported Providers
 
-  - `reset`: Reset all formatting
-  - `bold`: Bold text
-  - `dim`: Dimmed text
-  - `accent`: Accent styling (bold)
+gitfetch supports multiple Git hosting platforms:
 
-- **Basic Colors**:
+- **GitHub** - Uses GitHub CLI (gh) for authentication
+- **GitLab** - Uses GitLab CLI (glab) for authentication
+- **Gitea/Forgejo/Codeberg** - Direct API access with personal access tokens
+- **Sourcehut** - Direct API access with personal access tokens
 
-  - `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`: Standard ANSI colors
-  - `orange`: Custom orange color
-
-- **UI Elements**:
-
-  - `header`: Section headers and main display text
-  - `muted`: Separators and underlines
-
-- **Contribution Graph**:
-  - `0`: No contributions (lightest)
-  - `1`: 1-2 contributions
-  - `2`: 3-6 contributions
-  - `3`: 7-12 contributions
-  - `4`: 13+ contributions (darkest)
-
-#### Customizing Colors
-
-To change colors, edit `~/.config/gitfetch/gitfetch.conf` and modify the ANSI escape codes:
-
-**Example: Change header color to blue**
-
-```ini
-header = \033[94m
-```
-
-**Example: Change contribution graph colors to a purple theme**
-
-```ini
-0 = \033[48;5;235m  # Dark gray for no contributions
-1 = \033[48;5;60m   # Dark purple
-2 = \033[48;5;62m   # Medium purple
-3 = \033[48;5;64m   # Light purple
-4 = \033[48;5;66m   # Bright purple
-```
-
-**Common ANSI Color Codes**:
-
-- `\033[91m` = Bright Red
-- `\033[92m` = Bright Green
-- `\033[93m` = Bright Yellow
-- `\033[94m` = Bright Blue
-- `\033[95m` = Bright Magenta
-- `\033[96m` = Bright Cyan
-- `\033[97m` = Bright White
-
-**Background Colors** (for contribution blocks):
-
-- `\033[48;5;{color_code}m` where color_code is 0-255 (256-color palette)
-
-Changes take effect immediately - no restart required.
+See `docs/providers.md` for detailed setup instructions for each provider.
 
 ## Caching
 
