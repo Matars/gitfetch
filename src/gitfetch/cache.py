@@ -29,30 +29,6 @@ class CacheManager:
     def _ensure_cache_dir(self) -> None:
         """Ensure cache directory exists."""
         self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        self._migrate_old_cache()
-
-    def _migrate_old_cache(self) -> None:
-        """Migrate cache from old locations to new."""
-        old_locations = [
-            Path.home() / ".config" / "gitfetch",
-            Path.home() / ".cache" / "gitfetch"
-        ]
-        new_db_file = self.DB_FILE
-
-        for old_cache_dir in old_locations:
-            old_db_file = old_cache_dir / "cache.db"
-            if old_db_file.exists() and not new_db_file.exists():
-                try:
-                    # Copy the old database to the new location
-                    import shutil
-                    new_db_file.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(old_db_file, new_db_file)
-                    print(f"Cache migrated from {old_db_file} to "
-                          f"{new_db_file}")
-                    break  # Only migrate from the first found location
-                except Exception:
-                    # If migration fails, just continue
-                    pass
 
     def _init_database(self) -> None:
         """Initialize SQLite database with required tables."""

@@ -273,6 +273,14 @@ Cache database location: `~/.local/share/gitfetch/cache.db`
 
 This follows XDG Base Directory specification for application data.
 
+### Upgrading from older versions
+
+If you have an older version of gitfetch that stored cache in `~/.config/gitfetch/cache.db`, you can safely delete the old cache file:
+
+```bash
+rm ~/.config/gitfetch/cache.db
+```
+
 ## Why GitHub CLI?
 
 Using the GitHub CLI (gh) instead of direct API calls provides several benefits:
