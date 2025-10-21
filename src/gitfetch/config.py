@@ -236,28 +236,6 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['custom_box'] = box
 
-    def get_show_date(self) -> bool:
-        """
-        Get whether to show date labels on the contribution graph.
-
-        Returns:
-            True if date labels should be shown, False otherwise
-        """
-        show_date_str = self.config.get('DEFAULT', 'show_date',
-                                        fallback='true')
-        return show_date_str.lower() in ('true', '1', 'yes', 'on')
-
-    def set_show_date(self, show_date: bool) -> None:
-        """
-        Set whether to show date labels on the contribution graph.
-
-        Args:
-            show_date: Whether to show date labels
-        """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['show_date'] = str(show_date).lower()
-
     def save(self) -> None:
         """Save configuration to file."""
         import os

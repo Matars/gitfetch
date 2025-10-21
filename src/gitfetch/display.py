@@ -16,7 +16,7 @@ class DisplayFormatter:
 
     def __init__(self, config_manager: ConfigManager,
                  custom_box: Optional[str] = None,
-                 show_date: Optional[bool] = None,
+                 show_date: bool = True,
                  graph_only: bool = False,
                  show_achievements: bool = True,
                  show_languages: bool = True,
@@ -33,8 +33,7 @@ class DisplayFormatter:
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
-        self.show_date = (show_date if show_date is not None
-                          else config_manager.get_show_date())
+        self.show_date = show_date
         self.graph_only = graph_only
         self.show_achievements = show_achievements
         self.show_languages = show_languages
