@@ -142,6 +142,14 @@ Clear cache:
 gitfetch --clear-cache
 ```
 
+### Configuration
+
+Change the configured git provider:
+
+```bash
+gitfetch --change-provider
+```
+
 ### Visual Customization
 
 Customize contribution block characters:

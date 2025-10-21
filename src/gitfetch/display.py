@@ -11,6 +11,7 @@ from datetime import datetime
 from .config import ConfigManager
 import subprocess
 
+
 class DisplayFormatter:
     """Formats and displays git provider stats in a neofetch-style layout."""
 
@@ -25,7 +26,8 @@ class DisplayFormatter:
                  show_account: bool = True,
                  show_grid: bool = True,
                  custom_width: Optional[int] = None,
-                 custom_height: Optional[int] = None):
+                 custom_height: Optional[int] = None,
+                 graph_timeline: bool = False):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -46,6 +48,7 @@ class DisplayFormatter:
         self.show_grid = show_grid
         self.custom_width = custom_width
         self.custom_height = custom_height
+        self.graph_timeline = graph_timeline
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -212,6 +215,15 @@ class DisplayFormatter:
     def _display_minimal(self, username: str, stats: Dict[str, Any],
                          spaced=True) -> None:
         """Display only contribution graph for narrow terminals."""
+        if self.graph_timeline:
+            # Show git timeline graph
+            try:
+                timeline_text = self._get_graph_text()
+                print(timeline_text)
+            except Exception as e:
+                print(f"Error displaying timeline: {e}")
+            return
+
         if not self.show_grid:
             # Show just the header without grid
             contrib_graph = stats.get('contribution_graph', [])
@@ -236,6 +248,30 @@ class DisplayFormatter:
     def _display_compact(self, username: str, user_data: Dict[str, Any],
                          stats: Dict[str, Any], spaced=True) -> None:
         """Display graph and minimal info side-by-side (no languages)."""
+        if self.graph_timeline:
+            # Show git timeline graph (only if no right side content for layout)
+            right_side = []
+            if self.show_account:
+                info_lines = self._format_user_info_compact(user_data, stats)
+                right_side.extend(info_lines)
+            if self.show_achievements:
+                contrib_graph = stats.get('contribution_graph', [])
+                recent_weeks = self._get_recent_weeks(contrib_graph)
+                achievements = self._build_achievements(recent_weeks)
+                if achievements:
+                    if right_side:
+                        right_side.append("")
+                    right_side.extend(achievements)
+
+            if not right_side:
+                try:
+                    timeline_text = self._get_graph_text()
+                    print(timeline_text)
+                except Exception as e:
+                    print(f"Error displaying timeline: {e}")
+                return
+            # Fall back to normal display if there's right side content
+
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(40, (self.terminal_width - 40) // 2)
@@ -282,6 +318,37 @@ class DisplayFormatter:
     def _display_full(self, username: str, user_data: Dict[str, Any],
                       stats: Dict[str, Any], spaced=True) -> None:
         """Display full layout with graph and all info sections."""
+        if self.graph_timeline and not self.show_grid:
+            # Show git timeline graph (only when no grid is shown)
+            try:
+                timeline_text = self._get_graph_text()
+                print(timeline_text)
+                # Still show right side info
+                contrib_graph = stats.get('contribution_graph', [])
+                info_lines = (self._format_user_info(user_data, stats)
+                              if self.show_account else [])
+                language_lines = (self._format_languages(stats)
+                                  if self.show_languages else [])
+                recent_weeks = self._get_recent_weeks(contrib_graph)
+                achievements = (self._build_achievements(recent_weeks)
+                                if self.show_achievements else [])
+
+                right_side = list(info_lines)
+                if language_lines and self.terminal_width >= 120:
+                    right_side.append("")
+                    right_side.extend(language_lines)
+                if achievements:
+                    right_side.append("")
+                    right_side.extend(achievements)
+
+                if right_side:
+                    print()  # Add spacing
+                    for line in right_side:
+                        print(line)
+            except Exception as e:
+                print(f"Error displaying timeline: {e}")
+            return
+
         contrib_graph = stats.get('contribution_graph', [])
         graph_width = max(50, (self.terminal_width - 10) // 2)
 
@@ -441,10 +508,12 @@ class DisplayFormatter:
         return lines
 
     def _get_graph_text(vertical=False):
-        text = subprocess.check_output(['git', '--no-pager', 'log', '--graph', '--all', '--pretty=format:""']).decode().replace('"','')
+        text = subprocess.check_output(
+            ['git', '--no-pager', 'log', '--graph', '--all', '--pretty=format:""']).decode().replace('"', '')
         if vertical:
             return text
-        text = text.translate(str.maketrans(r"\/", r"\/"[::-1])).replace("|","-")
+        text = text.translate(str.maketrans(
+            r"\/", r"\/"[::-1])).replace("|", "-")
         lines = text.splitlines()
         max_len = max(len(line) for line in lines)
         padded = [line.ljust(max_len) for line in lines]
