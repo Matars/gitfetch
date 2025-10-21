@@ -192,11 +192,6 @@ See `docs/colors.md` for detailed color configuration options and customization 
 
 gitfetch supports multiple Git hosting platforms:
 
-- **GitHub** - Uses GitHub CLI (gh) for authentication
-- **GitLab** - Uses GitLab CLI (glab) for authentication
-- **Gitea/Forgejo/Codeberg** - Direct API access with personal access tokens
-- **Sourcehut** - Direct API access with personal access tokens
-
 See `docs/providers.md` for detailed setup instructions for each provider.
 
 ## Caching
@@ -212,16 +207,6 @@ If you have an older version of gitfetch that stored cache in `~/.config/gitfetc
 ```bash
 rm ~/.config/gitfetch/cache.db
 ```
-
-## Why GitHub CLI?
-
-Using the GitHub CLI (gh) instead of direct API calls provides several benefits:
-
-- ✅ **No rate limits** - Uses your authenticated GitHub account
-- ✅ **Automatic authentication** - No need to manage tokens
-- ✅ **Better security** - Credentials managed by gh CLI
-- ✅ **Simpler setup** - Just run `gh auth login`
-
 ## Acknowledgements
 
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118.
