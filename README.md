@@ -13,7 +13,6 @@ A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sour
   </tr>
 </table>
 
-
 <img width="3441" height="1441" alt="2025-10-20-143110_hyprshot" src="https://github.com/user-attachments/assets/ee31ebe3-257f-4aff-994e-fffd47b48fa1" />
 
 ## Features
@@ -53,8 +52,8 @@ The setup process will provide helpful error messages and installation instructi
 ### macOS (Homebrew)
 
 ```bash
-brew tap matars/gitfetch
-brew install matars/gitfetch/gitfetch
+brew tap matars/gitfetch https://github.com/matars/gitfetch
+brew install gitfetch
 ```
 
 ### Arch Linux (AUR)
