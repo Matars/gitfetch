@@ -317,6 +317,13 @@ rm ~/.config/gitfetch/cache.db
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
 
+### Contributers
+- Zeviraty: Small fixes, color configuration
+- Vaishnav-Sabari-Girish: Better installation instructions
+- Noirbizzarre: Added installation instructions using uv and pipx
+- Fwtwoo: readme update
+- Joeliscoding: Added homebrew formula and fixed readme
+
 ## License
 
 GPL-2.0
