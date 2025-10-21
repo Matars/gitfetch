@@ -118,6 +118,8 @@ class GitHubFetcher(BaseFetcher):
                     user = re.findall(" +user: +(.*)", yml)
                     if len(user) != 0:
                         return user[0]
+                    else:
+                        raise Exception("Failed to get auth status")
                 except FileNotFoundError:
                     raise Exception("Failed to get auth status")
 
