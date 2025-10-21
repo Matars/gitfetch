@@ -136,141 +136,148 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
 
 
 def main() -> int:
-    args = parse_args()
-
-    if args.version:
-        print(f"gitfetch version: {__version__}")
-        # Check for updates from GitHub
-        import requests
-        try:
-            resp = requests.get(
-                "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
-            if resp.status_code == 200:
-                latest = resp.json()["tag_name"].lstrip("v")
-                if latest != __version__:
-                    print(
-                        f"\033[93mUpdate available: {latest}\n"
-                        "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                        "Or run: brew update && brew upgrade gitfetch\033[0m")
-                else:
-                    print("You are using the latest version.")
-            else:
-                print("Could not check for updates.")
-        except Exception:
-            print("Could not check for updates.")
-        return 0
-
-    # Initialize config
-    config_manager = ConfigManager()
-
-    # Check if gitfetch is initialized
-    if not config_manager.is_initialized():
-        print("🚀 Welcome to gitfetch! Let's set up your configuration.\n")
-        if not _initialize_gitfetch(config_manager):
-            print("Error: Initialization failed", file=sys.stderr)
-            return 1
-        print("\n✅ Configuration saved! You can now use gitfetch.\n")
-
-    # Initialize components
-    cache_expiry = config_manager.get_cache_expiry_hours()
-    cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
-    provider = config_manager.get_provider()
-    provider_url = config_manager.get_provider_url()
-    fetcher = _create_fetcher(provider, provider_url)
-
-    # Handle custom box character
-    custom_box = args.custom_box
-
-    # Handle show date setting
-    show_date = not args.no_date
-
-    formatter = DisplayFormatter(config_manager, custom_box, show_date,
-                                 args.graph_only, not args.no_achievements,
-                                 not args.no_languages, not args.no_issues,
-                                 not args.no_pr, not args.no_account,
-                                 not args.no_grid, args.width, args.height)
-    if args.spaced:
-        spaced = True
-    elif args.not_spaced:
-        spaced = False
-    else:
-        spaced = True
-
-    # Handle cache clearing
-    if args.clear_cache:
-        cache_manager.clear()
-        print("Cache cleared successfully!")
-        return 0
-
-    # Get username
-    username = args.username
-    if not username:
-        # Try to get default username from config
-        username = config_manager.get_default_username()
-        if not username:
-            # Fall back to authenticated user
-            try:
-                username = fetcher.get_authenticated_user()
-                # Save as default for future use
-                config_manager.set_default_username(username)
-                config_manager.save()
-            except Exception:
-                username = _prompt_username()
-                if not username:
-                    print("Error: Username is required", file=sys.stderr)
-                    return 1
-
-    # Fetch data (with or without cache)
     try:
-        if args.no_cache:
-            user_data = fetcher.fetch_user_data(username)
-            stats = fetcher.fetch_user_stats(username, user_data)
-            cache_manager.cache_user_data(username, user_data, stats)
-        else:
-            user_data = cache_manager.get_cached_user_data(username)
-            stats = cache_manager.get_cached_stats(username)
-            if user_data is None or stats is None:
-                # Try to get stale cache for immediate display
-                stale_user_data = cache_manager.get_stale_cached_user_data(
-                    username)
-                stale_stats = cache_manager.get_stale_cached_stats(username)
-                if stale_user_data is not None and stale_stats is not None:
-                    # Display stale cache immediately
-                    formatter.display(username, stale_user_data,
-                                      stale_stats, spaced=spaced)
-                    print("\n🔄 Refreshing data in background...",
-                          file=sys.stderr)
+        args = parse_args()
 
-                    # Refresh cache in background (don't wait for it)
-                    import threading
-
-                    def refresh_cache():
-                        try:
-                            fresh_user_data = fetcher.fetch_user_data(username)
-                            fresh_stats = fetcher.fetch_user_stats(
-                                username, fresh_user_data)
-                            cache_manager.cache_user_data(
-                                username, fresh_user_data, fresh_stats)
-                        except Exception:
-                            pass
-                    thread = threading.Thread(
-                        target=refresh_cache, daemon=True)
-                    thread.start()
-                    return 0
+        if args.version:
+            print(f"gitfetch version: {__version__}")
+            # Check for updates from GitHub
+            import requests
+            try:
+                resp = requests.get(
+                    "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
+                if resp.status_code == 200:
+                    latest = resp.json()["tag_name"].lstrip("v")
+                    if latest != __version__:
+                        print(
+                            f"\033[93mUpdate available: {latest}\n"
+                            "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                            "Or run: brew update && brew upgrade gitfetch\033[0m")
+                    else:
+                        print("You are using the latest version.")
                 else:
-                    # No cache at all, fetch fresh data
-                    user_data = fetcher.fetch_user_data(username)
-                    stats = fetcher.fetch_user_stats(username, user_data)
-                    cache_manager.cache_user_data(username, user_data, stats)
-            # else: fresh cache available, proceed to display
+                    print("Could not check for updates.")
+            except Exception:
+                print("Could not check for updates.")
+            return 0
 
-        # Display the results
-        formatter.display(username, user_data, stats, spaced=spaced)
+        # Initialize config
+        config_manager = ConfigManager()
 
-        return 0
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        # Check if gitfetch is initialized
+        if not config_manager.is_initialized():
+            print("🚀 Welcome to gitfetch! Let's set up your configuration.\n")
+            if not _initialize_gitfetch(config_manager):
+                print("Error: Initialization failed", file=sys.stderr)
+                return 1
+            print("\n✅ Configuration saved! You can now use gitfetch.\n")
+
+        # Initialize components
+        cache_expiry = config_manager.get_cache_expiry_hours()
+        cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
+        provider = config_manager.get_provider()
+        provider_url = config_manager.get_provider_url()
+        fetcher = _create_fetcher(provider, provider_url)
+
+        # Handle custom box character
+        custom_box = args.custom_box
+
+        # Handle show date setting
+        show_date = not args.no_date
+
+        formatter = DisplayFormatter(config_manager, custom_box, show_date,
+                                     args.graph_only, not args.no_achievements,
+                                     not args.no_languages, not args.no_issues,
+                                     not args.no_pr, not args.no_account,
+                                     not args.no_grid, args.width, args.height)
+        if args.spaced:
+            spaced = True
+        elif args.not_spaced:
+            spaced = False
+        else:
+            spaced = True
+
+        # Handle cache clearing
+        if args.clear_cache:
+            cache_manager.clear()
+            print("Cache cleared successfully!")
+            return 0
+
+        # Get username
+        username = args.username
+        if not username:
+            # Try to get default username from config
+            username = config_manager.get_default_username()
+            if not username:
+                # Fall back to authenticated user
+                try:
+                    username = fetcher.get_authenticated_user()
+                    # Save as default for future use
+                    config_manager.set_default_username(username)
+                    config_manager.save()
+                except Exception:
+                    username = _prompt_username()
+                    if not username:
+                        print("Error: Username is required", file=sys.stderr)
+                        return 1
+
+        # Fetch data (with or without cache)
+        try:
+            if args.no_cache:
+                user_data = fetcher.fetch_user_data(username)
+                stats = fetcher.fetch_user_stats(username, user_data)
+                cache_manager.cache_user_data(username, user_data, stats)
+            else:
+                user_data = cache_manager.get_cached_user_data(username)
+                stats = cache_manager.get_cached_stats(username)
+                if user_data is None or stats is None:
+                    # Try to get stale cache for immediate display
+                    stale_user_data = cache_manager.get_stale_cached_user_data(
+                        username)
+                    stale_stats = cache_manager.get_stale_cached_stats(
+                        username)
+                    if stale_user_data is not None and stale_stats is not None:
+                        # Display stale cache immediately
+                        formatter.display(username, stale_user_data,
+                                          stale_stats, spaced=spaced)
+                        print("\n🔄 Refreshing data in background...",
+                              file=sys.stderr)
+
+                        # Refresh cache in background (don't wait for it)
+                        import threading
+
+                        def refresh_cache():
+                            try:
+                                fresh_user_data = fetcher.fetch_user_data(
+                                    username)
+                                fresh_stats = fetcher.fetch_user_stats(
+                                    username, fresh_user_data)
+                                cache_manager.cache_user_data(
+                                    username, fresh_user_data, fresh_stats)
+                            except Exception:
+                                pass
+                        thread = threading.Thread(
+                            target=refresh_cache, daemon=True)
+                        thread.start()
+                        return 0
+                    else:
+                        # No cache at all, fetch fresh data
+                        user_data = fetcher.fetch_user_data(username)
+                        stats = fetcher.fetch_user_stats(username, user_data)
+                        cache_manager.cache_user_data(
+                            username, user_data, stats)
+                # else: fresh cache available, proceed to display
+
+            # Display the results
+            formatter.display(username, user_data, stats, spaced=spaced)
+
+            return 0
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.", file=sys.stderr)
+        return 130
 
 
 def _prompt_username() -> Optional[str]:
