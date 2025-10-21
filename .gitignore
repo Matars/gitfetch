@@ -1,10 +1,16 @@
 # chache 
 *.pyc
 __pycache__/
-.env
 .cache/
 .DS_Store
 .vscode/
 *.log
 
 *.egg-info
+
+
+# env
+venv/
+.venv
+env/
+.env/
