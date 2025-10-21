@@ -48,11 +48,18 @@ class ConfigManager:
         }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
-            if "COLORS" in self.config:
+            if "COLORS" in self.config._sections:
+                # Filter out non-color keys that might have been corrupted
+                colors_data = self.config._sections['COLORS']
+                valid_color_keys = set(default_colors.keys())
+                filtered_colors = {k: v for k, v in colors_data.items()
+                                   if k in valid_color_keys}
                 self.config._sections['COLORS'] = {
-                    **default_colors, **self.config._sections['COLORS']}
+                    **default_colors, **filtered_colors}
             else:
-                self.config._sections['COLORS'] = default_colors
+                self.config.add_section('COLORS')
+                for key, value in default_colors.items():
+                    self.config.set('COLORS', key, value)
         else:
             # Create default config
             self.config['DEFAULT'] = {
@@ -208,6 +215,49 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['provider_url'] = url
 
+    def get_custom_box(self) -> Optional[str]:
+        """
+        Get the custom box character from config.
+
+        Returns:
+            Custom box character or None if not set
+        """
+        box = self.config.get('DEFAULT', 'custom_box', fallback='')
+        return box if box else None
+
+    def set_custom_box(self, box: str) -> None:
+        """
+        Set the custom box character in config.
+
+        Args:
+            box: Custom box character to use
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['custom_box'] = box
+
+    def get_show_date(self) -> bool:
+        """
+        Get whether to show date labels on the contribution graph.
+
+        Returns:
+            True if date labels should be shown, False otherwise
+        """
+        show_date_str = self.config.get('DEFAULT', 'show_date',
+                                        fallback='true')
+        return show_date_str.lower() in ('true', '1', 'yes', 'on')
+
+    def set_show_date(self, show_date: bool) -> None:
+        """
+        Set whether to show date labels on the contribution graph.
+
+        Args:
+            show_date: Whether to show date labels
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['show_date'] = str(show_date).lower()
+
     def save(self) -> None:
         """Save configuration to file."""
         import os
@@ -222,26 +272,37 @@ class ConfigManager:
 
             f.write("[DEFAULT]\n")
             username = self.config.get('DEFAULT', 'username', fallback='')
-            f.write(f"username = {username}\n\n")
+            f.write(f"username = {username}\n")
 
             cache_hours = self.config.get('DEFAULT', 'cache_expiry_hours',
                                           fallback='24')
-            f.write(f"cache_expiry_hours = {cache_hours}\n\n")
+            f.write(f"cache_expiry_hours = {cache_hours}\n")
 
             provider = self.config.get('DEFAULT', 'provider', fallback='')
-            f.write(f"provider = {provider}\n\n")
+            f.write(f"provider = {provider}\n")
 
             provider_url = self.config.get('DEFAULT', 'provider_url',
                                            fallback='')
-            f.write(f"provider_url = {provider_url}\n\n")
+            f.write(f"provider_url = {provider_url}\n")
 
-            if 'COLORS' in self.config:
+            custom_box = self.config.get('DEFAULT', 'custom_box', fallback='')
+            if custom_box:
+                f.write(f"custom_box = {custom_box}\n")
+
+            show_date = self.config.get('DEFAULT', 'show_date',
+                                        fallback='true')
+            if show_date != 'true':  # Only write if it's not the default
+                f.write(f"show_date = {show_date}\n")
+
+            f.write("\n")
+
+            if 'COLORS' in self.config._sections:
                 f.write("[COLORS]\n")
                 # Find the longest key for alignment
-                if self.config['COLORS']:
-                    keys = list(self.config['COLORS'].keys())
+                colors_section = self.config._sections['COLORS']
+                if colors_section:
+                    keys = list(colors_section.keys())
                     max_key_length = max(len(key) for key in keys)
-                    for key, value in self.config['COLORS'].items():
+                    for key, value in colors_section.items():
                         f.write(f"{key:<{max_key_length}} = {value}\n")
                 f.write("\n")
-            f.write("\n")
