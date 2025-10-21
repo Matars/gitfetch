@@ -225,8 +225,6 @@ The coloring system uses GitHub's standard contribution levels, which are absolu
 **When It Might Seem "Inaccurate":**
 If you're viewing only recent weeks with generally lower activity, everything might appear in lighter colors. This is actually correct - those weeks truly have fewer contributions compared to your overall history standards.
 
-**Recommendation:** The current coloring is accurate. Custom dimensions don't reduce accuracy - they just show different portions of your accurately-colored contribution history.
-
 ## Intelligent Layout System
 
 gitfetch automatically selects the best layout based on your terminal dimensions:
