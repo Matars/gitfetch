@@ -305,11 +305,9 @@ See `docs/providers.md` for detailed setup instructions for each provider.
 
 Cache database location: `~/.local/share/gitfetch/cache.db`
 
-This follows XDG Base Directory specification for application data.
-
 ### Upgrading from older versions
 
-If you have an older version of gitfetch that stored cache in `~/.config/gitfetch/cache.db`, you can safely delete the old cache file:
+If you have an older version of gitfetch (pre v1.1.0) that stored cache in `~/.config/gitfetch/cache.db`, you can safely delete the old cache file:
 
 ```bash
 rm ~/.config/gitfetch/cache.db
@@ -319,7 +317,6 @@ rm ~/.config/gitfetch/cache.db
 
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
-- Built with modern Python practices and extensive customization options for the ultimate git statistics display
 
 ## License
 
