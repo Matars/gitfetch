@@ -14,11 +14,34 @@ from .config import ConfigManager
 class DisplayFormatter:
     """Formats and displays git provider stats in a neofetch-style layout."""
 
-    def __init__(self, config_manager: ConfigManager):
+    def __init__(self, config_manager: ConfigManager,
+                 custom_box: Optional[str] = None,
+                 show_date: Optional[bool] = None,
+                 graph_only: bool = False,
+                 show_achievements: bool = True,
+                 show_languages: bool = True,
+                 show_issues: bool = True,
+                 show_pr: bool = True,
+                 show_account: bool = True,
+                 show_grid: bool = True):
         """Initialize the display formatter."""
-        self.terminal_width = shutil.get_terminal_size().columns
+        terminal_size = shutil.get_terminal_size()
+        self.terminal_width = terminal_size.columns
+        self.terminal_height = terminal_size.lines
+        # Reserve some lines for prompt/shell status
+        self.available_height = max(10, self.terminal_height - 2)
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_colors()
+        self.custom_box = custom_box or config_manager.get_custom_box() or "■"
+        self.show_date = (show_date if show_date is not None
+                          else config_manager.get_show_date())
+        self.graph_only = graph_only
+        self.show_achievements = show_achievements
+        self.show_languages = show_languages
+        self.show_issues = show_issues
+        self.show_pr = show_pr
+        self.show_account = show_account
+        self.show_grid = show_grid
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -31,8 +54,8 @@ class DisplayFormatter:
             stats: User statistics data
             spaced: Spaced layout
         """
-        # Determine layout based on terminal width
-        layout = self._determine_layout()
+        # Determine layout based on available space and content dimensions
+        layout = self._determine_layout(username, user_data, stats)
 
         if layout == 'minimal':
             # Only show contribution graph
@@ -46,17 +69,155 @@ class DisplayFormatter:
 
         print()  # Empty line at the end
 
-    def _determine_layout(self) -> str:
-        """Determine layout based on terminal width."""
-        if self.terminal_width < 80:
-            return 'minimal'
-        elif self.terminal_width < 100:
-            return 'compact'
-        else:
-            return 'full'
+    def _calculate_layout_dimensions(self, username: str,
+                                     user_data: Dict[str, Any],
+                                     stats: Dict[str, Any],
+                                     layout: str) -> tuple:
+        """Calculate width and height required for a given layout."""
+        if layout == 'minimal':
+            return self._calculate_minimal_dimensions(username, stats)
+        elif layout == 'compact':
+            return self._calculate_compact_dimensions(username,
+                                                      user_data, stats)
+        elif layout == 'full':
+            return self._calculate_full_dimensions(username, user_data, stats)
+        return (0, 0)
 
-    def _display_minimal(self, username: str, stats: Dict[str, Any], spaced=True) -> None:
+    def _calculate_minimal_dimensions(self, username: str,
+                                      stats: Dict[str, Any]) -> tuple:
+        """Calculate dimensions for minimal layout (graph only)."""
+        if not self.show_grid:
+            # Just header dimensions
+            contrib_graph = stats.get('contribution_graph', [])
+            total_contribs = self._calculate_total_contributions(
+                self._get_recent_weeks(contrib_graph))
+            header_lines = self._graph_header(username, total_contribs)
+            width = max((self._display_width(line) for line in header_lines),
+                        default=0)
+            height = len(header_lines)
+            return (width, height)
+
+        contrib_graph = stats.get('contribution_graph', [])
+        graph_lines = self._get_contribution_graph_lines(
+            contrib_graph, username, width_constraint=self.terminal_width - 4,
+            include_sections=False, spaced=True
+        )
+        width = max((self._display_width(line) for line in graph_lines),
+                    default=0)
+        height = len(graph_lines)
+        return (width, height)
+
+    def _calculate_compact_dimensions(self, username: str,
+                                      user_data: Dict[str, Any],
+                                      stats: Dict[str, Any]) -> tuple:
+        """Calculate dimensions for compact layout."""
+        contrib_graph = stats.get('contribution_graph', [])
+        recent_weeks = self._get_recent_weeks(contrib_graph)
+        graph_width = max(40, (self.terminal_width - 40) // 2)
+
+        if self.show_grid:
+            graph_lines = self._get_contribution_graph_lines(
+                contrib_graph, username, width_constraint=graph_width,
+                include_sections=False, spaced=True
+            )
+        else:
+            # Just header for dimensions
+            total_contribs = self._calculate_total_contributions(recent_weeks)
+            graph_lines = self._graph_header(username, total_contribs)
+
+        right_side = []
+        if self.show_account:
+            info_lines = self._format_user_info_compact(user_data, stats)
+            right_side.extend(info_lines)
+        if self.show_achievements:
+            achievements = self._build_achievements(recent_weeks)
+            if achievements:
+                if right_side:
+                    right_side.append("")
+                right_side.extend(achievements)
+
+        max_lines = max(len(graph_lines), len(right_side))
+        right_width = max((self._display_width(line) for line in right_side),
+                          default=0)
+        total_width = graph_width + 2 + right_width
+        return (total_width, max_lines)
+
+    def _calculate_full_dimensions(self, username: str,
+                                   user_data: Dict[str, Any],
+                                   stats: Dict[str, Any]) -> tuple:
+        """Calculate dimensions for full layout."""
+        contrib_graph = stats.get('contribution_graph', [])
+        graph_width = max(50, (self.terminal_width - 10) // 2)
+
+        left_side = []
+        if self.show_grid:
+            left_side = self._get_contribution_graph_lines(
+                contrib_graph, username, width_constraint=graph_width,
+                include_sections=False, spaced=True
+            )
+
+        info_lines = (self._format_user_info(user_data, stats)
+                      if self.show_account else [])
+        language_lines = (self._format_languages(stats)
+                          if self.show_languages else [])
+        recent_weeks = self._get_recent_weeks(contrib_graph)
+        achievements = (self._build_achievements(recent_weeks)
+                        if self.show_achievements else [])
+
+        right_side = list(info_lines)
+        if language_lines and self.terminal_width >= 120:
+            right_side.append("")
+            right_side.extend(language_lines)
+        if achievements:
+            right_side.append("")
+            right_side.extend(achievements)
+
+        max_left_width = max(
+            self._display_width(line) for line in left_side
+        ) if left_side else 0
+        max_right_width = max(
+            self._display_width(line) for line in right_side
+        ) if right_side else 0
+
+        total_width = max_left_width + 2 + max_right_width
+        total_height = max(len(left_side), len(right_side))
+        return (total_width, total_height)
+
+    def _determine_layout(self, username: str, user_data: Dict[str, Any],
+                          stats: Dict[str, Any]) -> str:
+        """Determine layout based on available space and content dimensions."""
+        # If graph_only is set, always use minimal
+        if self.graph_only:
+            return 'minimal'
+
+        layouts = ['full', 'compact', 'minimal']
+        best_layout = 'minimal'
+
+        for layout in layouts:
+            width, height = self._calculate_layout_dimensions(
+                username, user_data, stats, layout)
+
+            # Check if this layout fits
+            if (width <= self.terminal_width and
+                    height <= self.available_height):
+                best_layout = layout
+                break
+
+        return best_layout
+
+    def _display_minimal(self, username: str, stats: Dict[str, Any],
+                         spaced=True) -> None:
         """Display only contribution graph for narrow terminals."""
+        if not self.show_grid:
+            # Show just the header without grid
+            contrib_graph = stats.get('contribution_graph', [])
+            total_contribs = self._calculate_total_contributions(
+                self._get_recent_weeks(contrib_graph))
+            header_lines = self._graph_header(username, total_contribs)
+            for line in header_lines:
+                print(line)
+            return
+
         contrib_graph = stats.get('contribution_graph', [])
         graph_lines = self._get_contribution_graph_lines(
             contrib_graph,
@@ -74,21 +235,36 @@ class DisplayFormatter:
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(40, (self.terminal_width - 40) // 2)
-        graph_lines = self._get_contribution_graph_lines(
-            contrib_graph,
-            username,
-            width_constraint=graph_width,
-            include_sections=False,
-            spaced=spaced,
-        )
 
-        info_lines = self._format_user_info_compact(user_data, stats)
-        achievements = self._build_achievements(recent_weeks)
+        if self.show_grid:
+            graph_lines = self._get_contribution_graph_lines(
+                contrib_graph,
+                username,
+                width_constraint=graph_width,
+                include_sections=False,
+                spaced=spaced,
+            )
+        else:
+            # Show just header without grid
+            total_contribs = self._calculate_total_contributions(recent_weeks)
+            graph_lines = self._graph_header(username, total_contribs)
 
-        right_side = list(info_lines)
-        if achievements:
-            right_side.append("")
-            right_side.extend(achievements)
+        right_side = []
+        if self.show_account:
+            info_lines = self._format_user_info_compact(user_data, stats)
+            right_side.extend(info_lines)
+        if self.show_achievements:
+            achievements = self._build_achievements(recent_weeks)
+            if achievements:
+                if right_side:
+                    right_side.append("")
+                right_side.extend(achievements)
+
+        # If no right side content, just show left side
+        if not right_side:
+            for line in graph_lines:
+                print(line)
+            return
 
         # Display side-by-side
         max_lines = max(len(graph_lines), len(right_side))
@@ -104,42 +280,69 @@ class DisplayFormatter:
         """Display full layout with graph and all info sections."""
         contrib_graph = stats.get('contribution_graph', [])
         graph_width = max(50, (self.terminal_width - 10) // 2)
-        left_side = self._get_contribution_graph_lines(
-            contrib_graph,
-            username,
-            width_constraint=graph_width,
-            include_sections=False,
-            spaced=spaced,
-        )
 
-        pull_request_lines = self._format_pull_requests(stats)
-        issue_lines = self._format_issues(stats)
+        left_side = []
+        if self.show_grid:
+            left_side = self._get_contribution_graph_lines(
+                contrib_graph,
+                username,
+                width_constraint=graph_width,
+                include_sections=False,
+                spaced=spaced,
+            )
 
-        # Only show PR/Issue columns if they fit side by side, otherwise show neither
-        section_columns = []
-        if pull_request_lines and issue_lines:
-            pr_width = max((self._display_width(line)
-                           for line in pull_request_lines), default=0)
-            issue_width = max((self._display_width(line)
-                              for line in issue_lines), default=0)
-            total_width = pr_width + issue_width + len("   ")  # gap
-            if total_width <= graph_width:
-                section_columns = [pull_request_lines, issue_lines]
-        # Do not show only one column; only show both if they fit
-        combined_sections = self._combine_section_grid(
-            section_columns, width_limit=graph_width
-        )
-        if combined_sections:
-            left_side.append("")
-            left_side.extend(combined_sections)
+        # Add PR/issues sections to left side if enabled
+        if self.show_pr or self.show_issues:
+            pull_request_lines = (self._format_pull_requests(stats)
+                                  if self.show_pr else [])
+            issue_lines = (self._format_issues(stats)
+                           if self.show_issues else [])
 
-        info_lines = self._format_user_info(user_data, stats)
-        language_lines = self._format_languages(stats)
+            # Only show PR/Issue columns if they fit side by side
+            section_columns = []
+            if pull_request_lines and issue_lines:
+                pr_width = max((self._display_width(line)
+                               for line in pull_request_lines), default=0)
+                issue_width = max((self._display_width(line)
+                                  for line in issue_lines), default=0)
+                total_width = pr_width + issue_width + len("   ")  # gap
+                if total_width <= graph_width:
+                    section_columns = [pull_request_lines, issue_lines]
+            # Do not show only one column; only show both if they fit
+            combined_sections = self._combine_section_grid(
+                section_columns, width_limit=graph_width
+            )
+            if combined_sections:
+                if left_side:
+                    left_side.append("")
+                left_side.extend(combined_sections)
+        elif not self.show_grid:
+            # If no grid and no PR/issues, show just header
+            total_contribs = self._calculate_total_contributions(
+                self._get_recent_weeks(contrib_graph))
+            left_side = self._graph_header(username, total_contribs)
+
+        info_lines = (self._format_user_info(user_data, stats)
+                      if self.show_account else [])
+        language_lines = (self._format_languages(stats)
+                          if self.show_languages else [])
+        recent_weeks = self._get_recent_weeks(contrib_graph)
+        achievements = (self._build_achievements(recent_weeks)
+                        if self.show_achievements else [])
 
         right_side = list(info_lines)
         if language_lines and self.terminal_width >= 120:
             right_side.append("")
             right_side.extend(language_lines)
+        if achievements:
+            right_side.append("")
+            right_side.extend(achievements)
+
+        # If no right side content, just show left side
+        if not right_side:
+            for line in left_side:
+                print(line)
+            return
 
         # Display side-by-side
         max_left_width = max(
@@ -206,9 +409,10 @@ class DisplayFormatter:
 
         lines = [*header_lines]
 
-        month_line = self._build_month_line_spaced(display_weeks)
-        if month_line.strip():
-            lines.append(month_line)
+        if self.show_date:
+            month_line = self._build_month_line_spaced(display_weeks)
+            if month_line.strip():
+                lines.append(month_line)
 
         # Add grid rows (no vertical spacing between rows)
         for row_idx, row in enumerate(day_rows):
@@ -868,16 +1072,8 @@ class DisplayFormatter:
     def _get_contribution_block(self, count: int) -> str:
         """Return a fixed-width block representing contribution intensity."""
         if not self.enable_color:
-            if count == 0:
-                return '░ '
-            elif count < 3:
-                return '▒ '
-            elif count < 7:
-                return '▓ '
-            elif count < 13:
-                return '█ '
-            else:
-                return '██'
+            # Use custom character for all intensities when no color
+            return f'{self.custom_box} '
 
         reset = '\033[0m'
         if count == 0:
@@ -891,16 +1087,16 @@ class DisplayFormatter:
         else:
             color = self.colors['4']
 
-        return f"{color}  {reset}"
+        return f"{color}{self.custom_box}{reset} "
 
     def _get_contribution_block_spaced(self, count: int) -> str:
         """
         Return a contribution block matching Kusa design.
-        Uses a solid square (■) followed by a space: "■ "
+        Uses custom box character followed by a space: "<custom> "
         Color intensity based on contribution count.
         """
         if not self.enable_color:
-            return '■ '
+            return f'{self.custom_box} '
 
         reset = '\033[0m'
         # Map contributions to GitHub's color palette
@@ -920,8 +1116,8 @@ class DisplayFormatter:
             # #216e39 - darkest green
             color = '\033[38;2;33;110;57m'
 
-        # Use solid square block + space = 2 chars wide
-        return f"{color}■{reset} "
+        # Use custom box character + space = 2 chars wide
+        return f"{color}{self.custom_box}{reset} "
 
     def _strip_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text."""

@@ -66,11 +66,64 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Disable spaced layout"
     )
 
+    visual_group.add_argument(
+        "--custom-box",
+        type=str,
+        help="Custom character for contribution blocks (e.g., '■', '█')"
+    )
+
+    visual_group.add_argument(
+        "--no-date",
+        action="store_true",
+        help="Hide month/date labels on contribution graph"
+    )
+
+    visual_group.add_argument(
+        "--graph-only",
+        action="store_true",
+        help="Show only the contribution graph"
+    )
+
+    visual_group.add_argument(
+        "--no-achievements",
+        action="store_true",
+        help="Hide achievements section"
+    )
+
+    visual_group.add_argument(
+        "--no-languages",
+        action="store_true",
+        help="Hide languages section"
+    )
+
+    visual_group.add_argument(
+        "--no-issues",
+        action="store_true",
+        help="Hide issues section"
+    )
+
+    visual_group.add_argument(
+        "--no-pr",
+        action="store_true",
+        help="Hide pull requests section"
+    )
+
+    visual_group.add_argument(
+        "--no-account",
+        action="store_true",
+        help="Hide account information section"
+    )
+
+    visual_group.add_argument(
+        "--no-grid",
+        action="store_true",
+        help="Hide contribution grid/graph"
+    )
+
     return parser.parse_args()
 
 
 def main() -> int:
-    """Main entry point for the CLI."""
     args = parse_args()
 
     if args.version:
@@ -112,7 +165,18 @@ def main() -> int:
     provider = config_manager.get_provider()
     provider_url = config_manager.get_provider_url()
     fetcher = _create_fetcher(provider, provider_url)
-    formatter = DisplayFormatter(config_manager)
+
+    # Handle custom box character
+    custom_box = args.custom_box
+
+    # Handle show date setting
+    show_date = not args.no_date
+
+    formatter = DisplayFormatter(config_manager, custom_box, show_date,
+                                 args.graph_only, not args.no_achievements,
+                                 not args.no_languages, not args.no_issues,
+                                 not args.no_pr, not args.no_account,
+                                 not args.no_grid)
     if args.spaced:
         spaced = True
     elif args.not_spaced:
