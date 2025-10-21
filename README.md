@@ -52,7 +52,7 @@ The setup process will provide helpful error messages and installation instructi
 ### macOS (Homebrew)
 
 ```bash
-brew tap matars/homebrew-gitfetch
+brew tap matars/gitfetch
 brew install gitfetch
 ```
 
