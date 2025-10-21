@@ -9,7 +9,7 @@ import re
 import unicodedata
 from datetime import datetime
 from .config import ConfigManager
-
+import subprocess
 
 class DisplayFormatter:
     """Formats and displays git provider stats in a neofetch-style layout."""
@@ -439,6 +439,21 @@ class DisplayFormatter:
                 lines.extend(achievements)
 
         return lines
+
+    def _get_graph_text(vertical=False):
+        text = subprocess.check_output(['git', '--no-pager', 'log', '--graph', '--all', '--pretty=format:""']).decode().replace('"','')
+        if vertical:
+            return text
+        text = text.translate(str.maketrans(r"\/", r"\/"[::-1])).replace("|","-")
+        lines = text.splitlines()
+        max_len = max(len(line) for line in lines)
+        padded = [line.ljust(max_len) for line in lines]
+
+        rotated = []
+        for col in reversed(range(max_len)):
+            new_line = ''.join(padded[row][col] for row in range(len(padded)))
+            rotated.append(new_line)
+        return '\n'.join(rotated)
 
     def _format_user_info_compact(self, user_data: Dict[str, Any],
                                   stats: Dict[str, Any]) -> list:
