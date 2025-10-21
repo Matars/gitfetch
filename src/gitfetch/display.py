@@ -16,14 +16,16 @@ class DisplayFormatter:
 
     def __init__(self, config_manager: ConfigManager,
                  custom_box: Optional[str] = None,
-                 show_date: bool = True,
+                 show_date: Optional[bool] = None,
                  graph_only: bool = False,
                  show_achievements: bool = True,
                  show_languages: bool = True,
                  show_issues: bool = True,
                  show_pr: bool = True,
                  show_account: bool = True,
-                 show_grid: bool = True):
+                 show_grid: bool = True,
+                 custom_width: Optional[int] = None,
+                 custom_height: Optional[int] = None):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -33,7 +35,8 @@ class DisplayFormatter:
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
-        self.show_date = show_date
+        self.show_date = (show_date if show_date is not None
+                          else config_manager.get_show_date())
         self.graph_only = graph_only
         self.show_achievements = show_achievements
         self.show_languages = show_languages
@@ -41,6 +44,8 @@ class DisplayFormatter:
         self.show_pr = show_pr
         self.show_account = show_account
         self.show_grid = show_grid
+        self.custom_width = custom_width
+        self.custom_height = custom_height
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -96,14 +101,11 @@ class DisplayFormatter:
             height = len(header_lines)
             return (width, height)
 
-        contrib_graph = stats.get('contribution_graph', [])
-        graph_lines = self._get_contribution_graph_lines(
-            contrib_graph, username, width_constraint=self.terminal_width - 4,
-            include_sections=False, spaced=True
-        )
-        width = max((self._display_width(line) for line in graph_lines),
-                    default=0)
-        height = len(graph_lines)
+        # Use custom dimensions if provided
+        width = (self.custom_width if self.custom_width is not None
+                 else self.terminal_width - 4)
+        height = (self.custom_height if self.custom_height is not None
+                  else 7)
         return (width, height)
 
     def _calculate_compact_dimensions(self, username: str,
@@ -112,17 +114,20 @@ class DisplayFormatter:
         """Calculate dimensions for compact layout."""
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        graph_width = max(40, (self.terminal_width - 40) // 2)
+        graph_width = (self.custom_width if self.custom_width is not None
+                       else max(40, (self.terminal_width - 40) // 2))
 
         if self.show_grid:
-            graph_lines = self._get_contribution_graph_lines(
-                contrib_graph, username, width_constraint=graph_width,
-                include_sections=False, spaced=True
-            )
+            # Use custom height for graph height
+            graph_height = (self.custom_height if self.custom_height is not None
+                            else 7)
         else:
             # Just header for dimensions
             total_contribs = self._calculate_total_contributions(recent_weeks)
             graph_lines = self._graph_header(username, total_contribs)
+            graph_width = max((self._display_width(line) for line in graph_lines),
+                              default=0)
+            graph_height = len(graph_lines)
 
         right_side = []
         if self.show_account:
@@ -135,7 +140,7 @@ class DisplayFormatter:
                     right_side.append("")
                 right_side.extend(achievements)
 
-        max_lines = max(len(graph_lines), len(right_side))
+        max_lines = max(graph_height, len(right_side))
         right_width = max((self._display_width(line) for line in right_side),
                           default=0)
         total_width = graph_width + 2 + right_width
@@ -291,30 +296,32 @@ class DisplayFormatter:
             )
 
         # Add PR/issues sections to left side if enabled
-        if self.show_pr or self.show_issues:
-            pull_request_lines = (self._format_pull_requests(stats)
-                                  if self.show_pr else [])
-            issue_lines = (self._format_issues(stats)
-                           if self.show_issues else [])
+            if self.show_pr or self.show_issues:
+                pull_request_lines = self._format_pull_requests(
+                    stats) if self.show_pr else []
+                issue_lines = self._format_issues(
+                    stats) if self.show_issues else []
 
-            # Only show PR/Issue columns if they fit side by side
-            section_columns = []
-            if pull_request_lines and issue_lines:
-                pr_width = max((self._display_width(line)
-                               for line in pull_request_lines), default=0)
-                issue_width = max((self._display_width(line)
-                                  for line in issue_lines), default=0)
-                total_width = pr_width + issue_width + len("   ")  # gap
-                if total_width <= graph_width:
-                    section_columns = [pull_request_lines, issue_lines]
-            # Do not show only one column; only show both if they fit
-            combined_sections = self._combine_section_grid(
-                section_columns, width_limit=graph_width
-            )
-            if combined_sections:
-                if left_side:
-                    left_side.append("")
-                left_side.extend(combined_sections)
+                section_columns = []
+                if pull_request_lines and issue_lines:
+                    pr_width = max((self._display_width(line)
+                                   for line in pull_request_lines), default=0)
+                    issue_width = max((self._display_width(line)
+                                      for line in issue_lines), default=0)
+                    total_width = pr_width + issue_width + len("   ")  # gap
+                    if total_width <= graph_width:
+                        section_columns = [pull_request_lines, issue_lines]
+                elif pull_request_lines:
+                    section_columns = [pull_request_lines]
+                elif issue_lines:
+                    section_columns = [issue_lines]
+
+                combined_sections = self._combine_section_grid(
+                    section_columns, width_limit=graph_width)
+                if combined_sections:
+                    if left_side:
+                        left_side.append("")
+                    left_side.extend(combined_sections)
         elif not self.show_grid:
             # If no grid and no PR/issues, show just header
             total_contribs = self._calculate_total_contributions(
@@ -386,18 +393,25 @@ class DisplayFormatter:
             return [*header_lines, *self._empty_graph_placeholder()]
 
         # Calculate how many weeks we can fit
-        if width_constraint is None:
+        if self.custom_width is not None:
+            width_constraint = self.custom_width
+        elif width_constraint is None:
             width_constraint = self.terminal_width - 8
 
         max_weeks = self._calculate_max_weeks(width_constraint)
         display_weeks = recent_weeks[-max_weeks:] if len(
             recent_weeks) > max_weeks else recent_weeks
 
+        # Determine how many days to show
+        days_to_show = 7
+        if self.custom_height is not None:
+            days_to_show = min(7, max(1, self.custom_height))
+
         # Prepare rows for each day of the week (Sun-Sat)
-        day_rows = [[] for _ in range(7)]
+        day_rows = [[] for _ in range(days_to_show)]
         for week in display_weeks:
             days = week.get('contributionDays', [])
-            for idx in range(7):
+            for idx in range(days_to_show):
                 day = days[idx] if idx < len(days) else {}
                 count = day.get('contributionCount', 0)
                 if spaced:

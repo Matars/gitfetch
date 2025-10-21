@@ -120,6 +120,18 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Hide contribution grid/graph"
     )
 
+    visual_group.add_argument(
+        "--width",
+        type=int,
+        help="Set custom width for contribution graph"
+    )
+
+    visual_group.add_argument(
+        "--height",
+        type=int,
+        help="Set custom height for contribution graph"
+    )
+
     return parser.parse_args()
 
 
@@ -176,7 +188,7 @@ def main() -> int:
                                  args.graph_only, not args.no_achievements,
                                  not args.no_languages, not args.no_issues,
                                  not args.no_pr, not args.no_account,
-                                 not args.no_grid)
+                                 not args.no_grid, args.width, args.height)
     if args.spaced:
         spaced = True
     elif args.not_spaced:
