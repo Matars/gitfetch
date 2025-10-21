@@ -28,7 +28,7 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Username to fetch stats for"
     )
 
-    general_group = parser.add_argument_group('General Options')
+    general_group = parser.add_argument_group('\033[92mGeneral Options\033[0m')
     general_group.add_argument(
         "--no-cache",
         action="store_true",
@@ -53,7 +53,13 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Show version and check for updates"
     )
 
-    visual_group = parser.add_argument_group('Visual Options')
+    general_group.add_argument(
+        "--change-provider",
+        action="store_true",
+        help="Change the configured git provider"
+    )
+
+    visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
     visual_group.add_argument(
         "--spaced",
         action="store_true",
@@ -132,12 +138,28 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Set custom height for contribution graph"
     )
 
+    visual_group.add_argument(
+        "--graph-timeline",
+        action="store_true",
+        help="Show git timeline graph instead of contribution graph"
+    )
+
     return parser.parse_args()
 
 
 def main() -> int:
+    """Main entry point for gitfetch CLI."""
     try:
         args = parse_args()
+
+        if args.change_provider:
+            config_manager = ConfigManager()
+            print("🔄 Changing git provider...\n")
+            if not _initialize_gitfetch(config_manager):
+                print("Error: Failed to change provider", file=sys.stderr)
+                return 1
+            print("\n✅ Provider changed successfully!")
+            return 0
 
         if args.version:
             print(f"gitfetch version: {__version__}")
@@ -189,7 +211,8 @@ def main() -> int:
                                      args.graph_only, not args.no_achievements,
                                      not args.no_languages, not args.no_issues,
                                      not args.no_pr, not args.no_account,
-                                     not args.no_grid, args.width, args.height)
+                                     not args.no_grid, args.width, args.height,
+                                     args.graph_timeline)
         if args.spaced:
             spaced = True
         elif args.not_spaced:
