@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 import subprocess
 import json
 import sys
-
+import os, re
 
 class BaseFetcher(ABC):
     """Abstract base class for git hosting provider fetchers."""
@@ -113,7 +113,13 @@ class GitHubFetcher(BaseFetcher):
                 timeout=5
             )
             if result.returncode != 0:
-                raise Exception("Failed to get auth status")
+                try:
+                    yml = open(os.path.expanduser("~/.config/gh/hosts.yml"),'r').read()
+                    user = re.findall(" +user: +(.*)", yml)
+                    if len(user) != 0:
+                        return user[0]
+                except FileNotFoundError:
+                    raise Exception("Failed to get auth status")
 
             data = json.loads(result.stdout)
             hosts = data.get('hosts', {})
