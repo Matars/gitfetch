@@ -17,7 +17,8 @@ from . import __version__
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="A neofetch-style CLI tool for git provider statistics",
+        description="""A neofetch-style CLI tool for git.
+Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -27,40 +28,42 @@ def parse_args() -> argparse.Namespace:
         help="Username to fetch stats for"
     )
 
-    parser.add_argument(
+    general_group = parser.add_argument_group('General Options')
+    general_group.add_argument(
         "--no-cache",
         action="store_true",
         help="Bypass cache and fetch fresh data"
     )
 
-    parser.add_argument(
+    general_group.add_argument(
         "--clear-cache",
         action="store_true",
         help="Clear the cache and exit"
     )
 
-    parser.add_argument(
+    general_group.add_argument(
         "--token",
         type=str,
-        help="GitHub personal access token (optional, increases rate limits)"
+        help="Personal access token (optional, increases rate limits)"
     )
 
-    parser.add_argument(
+    general_group.add_argument(
+        "--version",
+        action="store_true",
+        help="Show version and check for updates"
+    )
+
+    visual_group = parser.add_argument_group('Visual Options')
+    visual_group.add_argument(
         "--spaced",
         action="store_true",
         help="Enable spaced layout"
     )
 
-    parser.add_argument(
+    visual_group.add_argument(
         "--not-spaced",
         action="store_true",
         help="Disable spaced layout"
-    )
-
-    parser.add_argument(
-        "--version",
-        action="store_true",
-        help="Show version and check for updates"
     )
 
     return parser.parse_args()
