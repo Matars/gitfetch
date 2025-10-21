@@ -33,7 +33,21 @@ The following color keys can be customized:
 
 ## Configuration
 
-Colors use ANSI escape codes. Examples:
+Colors can be specified using either ANSI escape codes or color names. Examples:
+
+### Using Color Names
+
+```ini
+[COLORS]
+header = blue
+red = bright_red
+green = cyan
+yellow = orange
+muted = gray
+accent = magenta
+```
+
+### Using ANSI Codes
 
 ```ini
 [COLORS]
@@ -46,6 +60,30 @@ header = \033[38;2;118;215;161m
 0 = \033[48;5;238m
 1 = \033[48;5;28m
 ```
+
+## Supported Color Names
+
+The following color names can be used instead of ANSI codes:
+
+- `black` → `\033[30m` (dark gray/black)
+- `red` → `\033[91m` (bright red)
+- `green` → `\033[92m` (bright green)
+- `yellow` → `\033[93m` (bright yellow)
+- `blue` → `\033[94m` (bright blue)
+- `magenta` → `\033[95m` (bright magenta)
+- `cyan` → `\033[96m` (bright cyan)
+- `white` → `\033[97m` (bright white)
+- `gray` → `\033[90m` (dim white/gray)
+- `bright_red` → `\033[91m` (same as red)
+- `bright_green` → `\033[92m` (same as green)
+- `bright_yellow` → `\033[93m` (same as yellow)
+- `bright_blue` → `\033[94m` (same as blue)
+- `bright_magenta` → `\033[95m` (same as magenta)
+- `bright_cyan` → `\033[96m` (same as cyan)
+- `bright_white` → `\033[97m` (same as white)
+- `orange` → `\033[38;2;255;165;0m` (true orange RGB)
+- `purple` → `\033[95m` (alias for magenta)
+- `pink` → `\033[95m` (alias for magenta)
 
 ## ANSI Color Codes
 
