@@ -52,7 +52,7 @@ The setup process will provide helpful error messages and installation instructi
 ### macOS (Homebrew)
 
 ```bash
-brew tap matars/homebrew-gitfetch
+brew tap matars/gitfetch
 brew install gitfetch
 ```
 
@@ -142,6 +142,14 @@ Clear cache:
 gitfetch --clear-cache
 ```
 
+### Configuration
+
+Change the configured git provider:
+
+```bash
+gitfetch --change-provider
+```
+
 ### Visual Customization
 
 Customize contribution block characters:
@@ -216,8 +224,6 @@ The coloring system uses GitHub's standard contribution levels, which are absolu
 
 **When It Might Seem "Inaccurate":**
 If you're viewing only recent weeks with generally lower activity, everything might appear in lighter colors. This is actually correct - those weeks truly have fewer contributions compared to your overall history standards.
-
-**Recommendation:** The current coloring is accurate. Custom dimensions don't reduce accuracy - they just show different portions of your accurately-colored contribution history.
 
 ## Intelligent Layout System
 
@@ -316,6 +322,13 @@ rm ~/.config/gitfetch/cache.db
 
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
+
+### Contributers
+- Zeviraty: Small fixes, color configuration
+- Vaishnav-Sabari-Girish: Better installation instructions
+- Noirbizzarre: Added installation instructions using uv and pipx
+- Fwtwoo: readme update
+- Joeliscoding: Added homebrew formula and fixed readme
 
 ## License
 

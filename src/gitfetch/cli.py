@@ -28,7 +28,7 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Username to fetch stats for"
     )
 
-    general_group = parser.add_argument_group('General Options')
+    general_group = parser.add_argument_group('\033[92mGeneral Options\033[0m')
     general_group.add_argument(
         "--no-cache",
         action="store_true",
@@ -42,18 +42,18 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     general_group.add_argument(
-        "--token",
-        type=str,
-        help="Personal access token (optional, increases rate limits)"
-    )
-
-    general_group.add_argument(
         "--version",
         action="store_true",
         help="Show version and check for updates"
     )
 
-    visual_group = parser.add_argument_group('Visual Options')
+    general_group.add_argument(
+        "--change-provider",
+        action="store_true",
+        help="Change the configured git provider"
+    )
+
+    visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
     visual_group.add_argument(
         "--spaced",
         action="store_true",
@@ -132,12 +132,28 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Set custom height for contribution graph"
     )
 
+    visual_group.add_argument(
+        "--graph-timeline",
+        action="store_true",
+        help="Show git timeline graph instead of contribution graph"
+    )
+
     return parser.parse_args()
 
 
 def main() -> int:
+    """Main entry point for gitfetch CLI."""
     try:
         args = parse_args()
+
+        if args.change_provider:
+            config_manager = ConfigManager()
+            print("🔄 Changing git provider...\n")
+            if not _initialize_gitfetch(config_manager):
+                print("Error: Failed to change provider", file=sys.stderr)
+                return 1
+            print("\n✅ Provider changed successfully!")
+            return 0
 
         if args.version:
             print(f"gitfetch version: {__version__}")
@@ -177,7 +193,8 @@ def main() -> int:
         cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
         provider = config_manager.get_provider()
         provider_url = config_manager.get_provider_url()
-        fetcher = _create_fetcher(provider, provider_url)
+        token = config_manager.get_token()
+        fetcher = _create_fetcher(provider, provider_url, token)
 
         # Handle custom box character
         custom_box = args.custom_box
@@ -189,7 +206,8 @@ def main() -> int:
                                      args.graph_only, not args.no_achievements,
                                      not args.no_languages, not args.no_issues,
                                      not args.no_pr, not args.no_account,
-                                     not args.no_grid, args.width, args.height)
+                                     not args.no_grid, args.width, args.height,
+                                     args.graph_timeline)
         if args.spaced:
             spaced = True
         elif args.not_spaced:
@@ -332,20 +350,20 @@ def _prompt_provider() -> Optional[str]:
         return None
 
 
-def _create_fetcher(provider: str, base_url: str):
+def _create_fetcher(provider: str, base_url: str, token: Optional[str] = None):
     """Create the appropriate fetcher for the provider."""
     if provider == 'github':
         from .fetcher import GitHubFetcher
-        return GitHubFetcher()
+        return GitHubFetcher(token)
     elif provider == 'gitlab':
         from .fetcher import GitLabFetcher
-        return GitLabFetcher(base_url)
+        return GitLabFetcher(base_url, token)
     elif provider == 'gitea':
         from .fetcher import GiteaFetcher
-        return GiteaFetcher(base_url)
+        return GiteaFetcher(base_url, token)
     elif provider == 'sourcehut':
         from .fetcher import SourcehutFetcher
-        return SourcehutFetcher(base_url)
+        return SourcehutFetcher(base_url, token)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -383,8 +401,21 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         elif provider == 'sourcehut':
             config_manager.set_provider_url('https://git.sr.ht')
 
+        # Ask for token if needed
+        token = None
+        if provider in ['gitlab', 'gitea', 'sourcehut']:
+            token_input = input(
+                f"Enter your {provider} personal access token "
+                "(optional, press Enter to skip): "
+            ).strip()
+            if token_input:
+                token = token_input
+                config_manager.set_token(token)
+
         # Create appropriate fetcher
-        fetcher = _create_fetcher(provider, config_manager.get_provider_url())
+        fetcher = _create_fetcher(
+            provider, config_manager.get_provider_url(), token
+        )
 
         # Try to get authenticated user
         try:

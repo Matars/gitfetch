@@ -236,6 +236,27 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['custom_box'] = box
 
+    def get_token(self) -> Optional[str]:
+        """
+        Get the personal access token from config.
+
+        Returns:
+            Token or None if not set
+        """
+        token = self.config.get('DEFAULT', 'token', fallback='')
+        return token if token else None
+
+    def set_token(self, token: str) -> None:
+        """
+        Set the personal access token in config.
+
+        Args:
+            token: Personal access token
+        """
+        if 'DEFAULT' not in self.config:
+            self.config['DEFAULT'] = {}
+        self.config['DEFAULT']['token'] = token
+
     def save(self) -> None:
         """Save configuration to file."""
         import os
@@ -262,6 +283,10 @@ class ConfigManager:
             provider_url = self.config.get('DEFAULT', 'provider_url',
                                            fallback='')
             f.write(f"provider_url = {provider_url}\n")
+
+            token = self.config.get('DEFAULT', 'token', fallback='')
+            if token:
+                f.write(f"token = {token}\n")
 
             custom_box = self.config.get('DEFAULT', 'custom_box', fallback='')
             if custom_box:
