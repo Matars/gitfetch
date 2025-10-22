@@ -321,13 +321,13 @@ class DisplayFormatter:
         segments = [(m[0], m[1]) for m in matches]
 
         width = sum(len(text) for _, text in segments)
-        
+
         if width <= max_width:
             return line.rjust(max_width)
-        
+
         result = []
         remaining = max_width
-        
+
         for color, text in reversed(segments):
             if remaining <= 0:
                 break
@@ -337,19 +337,18 @@ class DisplayFormatter:
             else:
                 result.append((color, text[-remaining:]))
                 remaining = 0
-        
+
         final = ''.join(color + text for color, text in reversed(result))
         final += self.colors.get('reset', '\x1b[0m')
         return final
-
 
     def _display_full(self, username: str, user_data: Dict[str, Any],
                       stats: Dict[str, Any], spaced=True) -> None:
         """Display full layout with graph and all info sections."""
         left_side = []
         ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
-        if self.graph_timeline and not self.show_grid:
-            # Show git timeline graph (only when no grid is shown)
+        if self.graph_timeline:
+            # Show git timeline graph instead of contribution graph
             try:
                 timeline_text = self._get_graph_text(False)
                 left_side = timeline_text.split("\n")
@@ -375,18 +374,18 @@ class DisplayFormatter:
                 right_width = max(
                     self._display_width(line) for line in right_side
                 )
-                
+
                 offset = 80
                 max_width = self.terminal_width - right_width - offset
 
                 if right_side and left_side:
                     print()  # Add spacing
-                    for l,r in zip(left_side,right_side):
-                        print(self._reverse_truncate(l,max_width),self.colors['reset'],r)
+                    for l, r in zip(left_side, right_side):
+                        print(self._reverse_truncate(l, max_width),
+                              self.colors['reset'], r)
             except Exception as e:
                 print(f"Error displaying timeline: {e}")
             return
-
 
         contrib_graph = stats.get('contribution_graph', [])
         graph_width = max(50, (self.terminal_width - 10) // 2)
@@ -459,7 +458,6 @@ class DisplayFormatter:
         max_left_width = max(
             self._display_width(line) for line in left_side
         ) if left_side else 0
-
 
         for i in range(max(len(left_side), len(right_side))):
             if i < len(left_side):
@@ -546,16 +544,17 @@ class DisplayFormatter:
 
         return lines
 
-
     def _get_graph_text(self, vertical=False):
         text = subprocess.check_output(
-            ['git', '--no-pager', 'log', '--color=always', '--graph', '--all', '--pretty=format:""']
+            ['git', '--no-pager', 'log', '--color=always',
+                '--graph', '--all', '--pretty=format:""']
         ).decode().replace('"', '')
 
         if vertical:
             return text
 
-        text = text.translate(str.maketrans(r"\/", r"\/"[::-1])).replace("|", "-")
+        text = text.translate(str.maketrans(
+            r"\/", r"\/"[::-1])).replace("|", "-")
 
         ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
 
@@ -578,7 +577,8 @@ class DisplayFormatter:
             return ''
 
         max_len = max(len(line) for line in parsed_lines)
-        padded = [line + [(' ', '')] * (max_len - len(line)) for line in parsed_lines]
+        padded = [line + [(' ', '')] * (max_len - len(line))
+                  for line in parsed_lines]
 
         rotated = []
         for col in reversed(range(max_len)):
