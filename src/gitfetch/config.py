@@ -48,6 +48,17 @@ class ConfigManager:
         }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
+            # Migrate old cache_expiry_hours to cache_expiry_minutes
+            if self.config.has_option('DEFAULT', 'cache_expiry_hours'):
+                old_hours = self.config.get('DEFAULT', 'cache_expiry_hours')
+                try:
+                    new_minutes = int(old_hours) * 60  # hours to minutes
+                    self.config.set('DEFAULT', 'cache_expiry_minutes',
+                                    str(new_minutes))
+                    self.config.remove_option('DEFAULT', 'cache_expiry_hours')
+                    self.save()  # Save migrated config
+                except ValueError:
+                    pass  # Keep default if invalid
             if "COLORS" in self.config._sections:
                 # Filter out non-color keys that might have been corrupted
                 colors_data = self.config._sections['COLORS']
@@ -64,7 +75,7 @@ class ConfigManager:
             # Create default config
             self.config['DEFAULT'] = {
                 'username': '',
-                'cache_expiry_hours': '24'
+                'cache_expiry_minutes': '15'
             }
             self.config.add_section('COLORS')
             for key, value in default_colors.items():
@@ -137,30 +148,30 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['username'] = username
 
-    def get_cache_expiry_hours(self) -> int:
+    def get_cache_expiry_minutes(self) -> int:
         """
-        Get cache expiry time in hours.
+        Get cache expiry time in minutes.
 
         Returns:
-            Number of hours before cache expires
+            Number of minutes before cache expires
         """
-        hours_str = self.config.get(
-            'DEFAULT', 'cache_expiry_hours', fallback='24')
+        minutes_str = self.config.get(
+            'DEFAULT', 'cache_expiry_minutes', fallback='15')
         try:
-            return int(hours_str)
+            return int(minutes_str)
         except ValueError:
-            return 24
+            return 15
 
-    def set_cache_expiry_hours(self, hours: int) -> None:
+    def set_cache_expiry_minutes(self, minutes: int) -> None:
         """
-        Set cache expiry time in hours.
+        Set cache expiry time in minutes.
 
         Args:
-            hours: Number of hours before cache expires
+            minutes: Number of minutes before cache expires
         """
         if 'DEFAULT' not in self.config:
             self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['cache_expiry_hours'] = str(hours)
+        self.config['DEFAULT']['cache_expiry_minutes'] = str(minutes)
 
     def is_initialized(self) -> bool:
         """
@@ -273,9 +284,9 @@ class ConfigManager:
             username = self.config.get('DEFAULT', 'username', fallback='')
             f.write(f"username = {username}\n")
 
-            cache_hours = self.config.get('DEFAULT', 'cache_expiry_hours',
-                                          fallback='24')
-            f.write(f"cache_expiry_hours = {cache_hours}\n")
+            cache_minutes = self.config.get('DEFAULT', 'cache_expiry_minutes',
+                                            fallback='15')
+            f.write(f"cache_expiry_minutes = {cache_minutes}\n")
 
             provider = self.config.get('DEFAULT', 'provider', fallback='')
             f.write(f"provider = {provider}\n")

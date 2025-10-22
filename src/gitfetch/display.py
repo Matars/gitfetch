@@ -1036,7 +1036,7 @@ class DisplayFormatter:
         if not weeks_data:
             return 0, 0
 
-        # Flatten all contribution counts in reverse chronological order
+        # Flatten contributions in reverse chronological order (newest first)
         all_contributions = []
         for week in weeks_data:
             for day in week.get('contributionDays', []):
@@ -1048,17 +1048,22 @@ class DisplayFormatter:
         max_streak = 0
         temp_streak = 0
 
+        # Calculate current streak (ending with most recent contribution)
+        for contrib in all_contributions:
+            if contrib > 0:
+                current_streak += 1
+            else:
+                break
+
+        # Calculate max streak
+        temp_streak = 0
         for contrib in all_contributions:
             if contrib > 0:
                 temp_streak += 1
-                current_streak = temp_streak
-            else:
                 if temp_streak > max_streak:
                     max_streak = temp_streak
+            else:
                 temp_streak = 0
-
-        if temp_streak > max_streak:
-            max_streak = temp_streak
 
         return current_streak, max_streak
 
