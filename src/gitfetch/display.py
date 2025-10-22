@@ -35,7 +35,7 @@ class DisplayFormatter:
         # Reserve some lines for prompt/shell status
         self.available_height = max(10, self.terminal_height - 2)
         self.enable_color = sys.stdout.isatty()
-        self.colors = config_manager.get_colors()
+        self.colors = config_manager.get_ansi_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
         self.show_date = (show_date if show_date is not None
                           else config_manager.get_show_date())
