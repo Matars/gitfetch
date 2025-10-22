@@ -378,7 +378,6 @@ class DisplayFormatter:
                 
                 offset = 80
                 max_width = self.terminal_width - right_width - offset
-                print(max_width)
 
                 if right_side and left_side:
                     print()  # Add spacing
