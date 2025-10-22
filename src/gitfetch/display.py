@@ -27,7 +27,8 @@ class DisplayFormatter:
                  show_grid: bool = True,
                  custom_width: Optional[int] = None,
                  custom_height: Optional[int] = None,
-                 graph_timeline: bool = False):
+                 graph_timeline: bool = False,
+                 repo_mode: bool = False):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -49,6 +50,7 @@ class DisplayFormatter:
         self.custom_width = custom_width
         self.custom_height = custom_height
         self.graph_timeline = graph_timeline
+        self.repo_mode = repo_mode
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -490,6 +492,14 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
+        if self.repo_mode:
+            try:
+                weeks_data = self._get_local_contribution_weeks()
+            except Exception as e:
+                return [f"Error getting repo contributions: {e}"]
+        else:
+            weeks_data = weeks_data
+
         recent_weeks = self._get_recent_weeks(weeks_data)
         total_contribs = self._calculate_total_contributions(recent_weeks)
 
@@ -545,6 +555,54 @@ class DisplayFormatter:
                 lines.extend(achievements)
 
         return lines
+
+    def _get_local_contribution_weeks(self):
+        """Get contribution weeks from local git repository."""
+        from datetime import datetime, timedelta
+        import collections
+
+        # Get commit dates
+        result = subprocess.run(
+            ['git', 'log', '--pretty=format:%ai', '--all'],
+            capture_output=True, text=True, cwd='.'
+        )
+        if result.returncode != 0:
+            raise Exception("Failed to get git log")
+
+        commits = result.stdout.strip().split('\n')
+        if not commits or commits == ['']:
+            return []
+
+        # Parse dates and count commits per day
+        commit_counts = collections.Counter()
+        for commit in commits:
+            if commit:
+                date_str = commit.split(' ')[0]  # YYYY-MM-DD
+                commit_counts[date_str] += 1
+
+        # Get date range (last year)
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=365)
+
+        # Build weeks
+        weeks = []
+        current_date = start_date
+        while current_date <= end_date:
+            week = {'contributionDays': []}
+            for i in range(7):
+                day_date = current_date + timedelta(days=i)
+                if day_date > end_date:
+                    break
+                count = commit_counts.get(day_date.isoformat(), 0)
+                week['contributionDays'].append({
+                    'contributionCount': count,
+                    'date': day_date.isoformat()
+                })
+            if week['contributionDays']:
+                weeks.append(week)
+            current_date += timedelta(days=7)
+
+        return weeks
 
     def _get_graph_text(self, vertical=False):
         text = subprocess.check_output(

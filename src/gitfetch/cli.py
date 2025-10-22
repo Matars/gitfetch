@@ -85,6 +85,12 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help=argparse.SUPPRESS  # Hide from help
     )
 
+    general_group.add_argument(
+        "--repo",
+        action="store_true",
+        help="Fetch data specific to current repo (requires .git folder)"
+    )
+
     visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
     visual_group.add_argument(
         "--spaced",
@@ -178,6 +184,12 @@ def main() -> int:
     try:
         args = parse_args()
 
+        # Check for --repo flag
+        if args.repo:
+            if not os.path.exists('.git'):
+                print("Error: --repo requires .git folder", file=sys.stderr)
+                return 1
+
         # Handle background refresh mode (hidden feature)
         if args.background_refresh:
             _background_refresh_cache_subprocess(args.background_refresh)
@@ -244,7 +256,7 @@ def main() -> int:
                                      not args.no_languages, not args.no_issues,
                                      not args.no_pr, not args.no_account,
                                      not args.no_grid, args.width, args.height,
-                                     args.graph_timeline)
+                                     args.graph_timeline, args.repo)
         if args.spaced:
             spaced = True
         elif args.not_spaced:
