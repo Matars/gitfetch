@@ -153,12 +153,14 @@ class ConfigManager:
         Get cache expiry time in minutes.
 
         Returns:
-            Number of minutes before cache expires
+            Number of minutes before cache expires (minimum 1)
         """
         minutes_str = self.config.get(
             'DEFAULT', 'cache_expiry_minutes', fallback='15')
         try:
-            return int(minutes_str)
+            minutes = int(minutes_str)
+            # Ensure cache expiry is at least 1 minute
+            return max(1, minutes)
         except ValueError:
             return 15
 
@@ -167,8 +169,11 @@ class ConfigManager:
         Set cache expiry time in minutes.
 
         Args:
-            minutes: Number of minutes before cache expires
+            minutes: Number of minutes before cache expires (minimum 1)
         """
+        # Ensure cache expiry is at least 1 minute
+        minutes = max(1, minutes)
+
         if 'DEFAULT' not in self.config:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['cache_expiry_minutes'] = str(minutes)
