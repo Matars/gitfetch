@@ -35,7 +35,7 @@ class DisplayFormatter:
         # Reserve some lines for prompt/shell status
         self.available_height = max(10, self.terminal_height - 2)
         self.enable_color = sys.stdout.isatty()
-        self.colors = config_manager.get_colors()
+        self.colors = config_manager.get_ansi_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
         self.show_date = (show_date if show_date is not None
                           else config_manager.get_show_date())
@@ -118,7 +118,7 @@ class DisplayFormatter:
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = (self.custom_width if self.custom_width is not None
-                       else max(40, (self.terminal_width - 40) // 2))
+                       else max(40, (self.terminal_width - 40) * 3 // 4))
 
         if self.show_grid:
             # Use custom height for graph height
@@ -154,7 +154,8 @@ class DisplayFormatter:
                                    stats: Dict[str, Any]) -> tuple:
         """Calculate dimensions for full layout."""
         contrib_graph = stats.get('contribution_graph', [])
-        graph_width = max(50, (self.terminal_width - 10) // 2)
+        graph_width = (self.custom_width if self.custom_width is not None
+                       else max(50, (self.terminal_width - 10) * 3 // 4))
 
         left_side = []
         if self.show_grid:
@@ -274,7 +275,7 @@ class DisplayFormatter:
 
         contrib_graph = stats.get('contribution_graph', [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        graph_width = max(40, (self.terminal_width - 40) // 2)
+        graph_width = max(40, (self.terminal_width - 40) * 3 // 4)
 
         if self.show_grid:
             graph_lines = self._get_contribution_graph_lines(
@@ -388,7 +389,8 @@ class DisplayFormatter:
             return
 
         contrib_graph = stats.get('contribution_graph', [])
-        graph_width = max(50, (self.terminal_width - 10) // 2)
+        graph_width = (self.custom_width if self.custom_width is not None
+                       else max(50, (self.terminal_width - 10) * 3 // 4))
 
         if self.show_grid:
             left_side = self._get_contribution_graph_lines(

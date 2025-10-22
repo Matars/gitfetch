@@ -4,6 +4,8 @@ Command-line interface for gitfetch
 
 import argparse
 import sys
+import os
+import subprocess
 from typing import Optional
 
 import readchar
@@ -12,6 +14,29 @@ from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
 from . import __version__
+
+
+def _background_refresh_cache_subprocess(username: str) -> None:
+    """
+    Background cache refresh function that runs as a standalone script.
+    This is called by the subprocess, not directly.
+    """
+    try:
+        # Re-create components
+        config_manager = ConfigManager()
+        cache_expiry = config_manager.get_cache_expiry_minutes()
+        cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
+        provider = config_manager.get_provider()
+        provider_url = config_manager.get_provider_url()
+        token = config_manager.get_token()
+        fetcher = _create_fetcher(provider, provider_url, token)
+
+        fresh_user_data = fetcher.fetch_user_data(username)
+        fresh_stats = fetcher.fetch_user_stats(username, fresh_user_data)
+        cache_manager.cache_user_data(username, fresh_user_data, fresh_stats)
+    except Exception:
+        # Silent fail - this is background refresh
+        pass
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +76,13 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         "--change-provider",
         action="store_true",
         help="Change the configured git provider"
+    )
+
+    # Hidden argument for background cache refresh
+    general_group.add_argument(
+        "--background-refresh",
+        type=str,
+        help=argparse.SUPPRESS  # Hide from help
     )
 
     visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
@@ -145,6 +177,11 @@ def main() -> int:
     """Main entry point for gitfetch CLI."""
     try:
         args = parse_args()
+
+        # Handle background refresh mode (hidden feature)
+        if args.background_refresh:
+            _background_refresh_cache_subprocess(args.background_refresh)
+            return 0
 
         if args.change_provider:
             config_manager = ConfigManager()
@@ -252,27 +289,34 @@ def main() -> int:
 
                 # If fresh cache is available, just display
                 if user_data is not None and stats is not None:
-                    formatter.display(username, user_data, stats, spaced=spaced)
+                    formatter.display(username, user_data,
+                                      stats, spaced=spaced)
                     return 0
 
                 # Try stale cache for immediate display
-                stale_user_data = cache_manager.get_stale_cached_user_data(username)
+                stale_user_data = cache_manager.get_stale_cached_user_data(
+                    username)
                 stale_stats = cache_manager.get_stale_cached_stats(username)
 
                 if stale_user_data is not None and stale_stats is not None:
-                    formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
-                    print("\n🔄 Refreshing data in background...", file=sys.stderr)
+                    formatter.display(username, stale_user_data,
+                                      stale_stats, spaced=spaced)
 
-                    import threading
-                    def refresh_cache():
-                        try:
-                            fresh_user_data = fetcher.fetch_user_data(username)
-                            fresh_stats = fetcher.fetch_user_stats(username, fresh_user_data)
-                            cache_manager.cache_user_data(username, fresh_user_data, fresh_stats)
-                        except Exception:
-                            pass
+                    # Spawn a completely independent background process
+                    # Use the same Python interpreter and call gitfetch with hidden flag
+                    try:
+                        subprocess.Popen(
+                            [sys.executable, "-m", "gitfetch.cli",
+                                "--background-refresh", username],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL,
+                            start_new_session=True  # Detach from parent process
+                        )
+                    except Exception:
+                        # If subprocess fails, silently continue
+                        pass
 
-                    threading.Thread(target=refresh_cache, daemon=True).start()
                     return 0
 
                 # No cache at all so fall through to fresh fetch

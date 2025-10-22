@@ -118,7 +118,6 @@ make dev      # Install in development mode (editable install)
 make test     # Run tests with pytest
 ```
 
-````
 ### Development Workflow
 
 1. Clone the repository
@@ -132,7 +131,7 @@ On first run, gitfetch will initialize and ask you to configure your default Git
 
 ```bash
 gitfetch
-````
+```
 
 This creates:
 

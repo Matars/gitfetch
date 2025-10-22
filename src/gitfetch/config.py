@@ -26,25 +26,25 @@ class ConfigManager:
     def _load_config(self) -> None:
         """Load configuration from file."""
         default_colors = {
-            'reset': '\\033[0m',
-            'bold': '\\033[1m',
-            'dim': '\\033[2m',
-            'red': '\\033[91m',
-            'green': '\\033[92m',
-            'yellow': '\\033[93m',
-            'blue': '\\033[94m',
-            'magenta': '\\033[95m',
-            'cyan': '\\033[96m',
-            'white': '\\033[97m',
-            'orange': '\\033[38;2;255;165;0m',
-            'accent': '\\033[1m',
-            'header': '\\033[38;2;118;215;161m',
-            'muted': '\\033[2m',
-            '0': '\\033[48;5;238m',
-            '1': '\\033[48;5;28m',
-            '2': '\\033[48;5;34m',
-            '3': '\\033[48;5;40m',
-            '4': '\\033[48;5;82m'
+            'reset': '#000000',
+            'bold': '#FFFFFF',
+            'dim': '#888888',
+            'red': '#FF5555',
+            'green': '#50FA7B',
+            'yellow': '#F1FA8C',
+            'blue': '#BD93F9',
+            'magenta': '#FF79C6',
+            'cyan': '#8BE9FD',
+            'white': '#F8F8F2',
+            'orange': '#FFB86C',
+            'accent': '#FFFFFF',
+            'header': '#76D7A1',
+            'muted': '#44475A',
+            '0': '#282A36',
+            '1': '#44475A',
+            '2': '#6272A4',
+            '3': '#50FA7B',
+            '4': '#F1FA8C'
         }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
@@ -80,9 +80,7 @@ class ConfigManager:
             self.config.add_section('COLORS')
             for key, value in default_colors.items():
                 self.config.set('COLORS', key, value)
-        for k, v in self.config._sections['COLORS'].items():
-            self.config._sections['COLORS'][k] = v.encode(
-                'utf-8').decode('unicode_escape')
+        # No longer decode ANSI escapes; store as hex
 
     def get_default_username(self) -> Optional[str]:
         """
@@ -96,46 +94,43 @@ class ConfigManager:
 
     def get_colors(self) -> dict:
         """
-        Get colors
+        Get colors as hex codes from config.
 
         Returns:
-            User defined colors or default colors if not set
+            dict: color name to hex code
         """
-        # Color name to ANSI code mapping
-        color_names = {
-            'black': '\\033[30m',
-            'red': '\\033[91m',
-            'green': '\\033[92m',
-            'yellow': '\\033[93m',
-            'blue': '\\033[94m',
-            'magenta': '\\033[95m',
-            'cyan': '\\033[96m',
-            'white': '\\033[97m',
-            'gray': '\\033[90m',
-            'bright_red': '\\033[91m',
-            'bright_green': '\\033[92m',
-            'bright_yellow': '\\033[93m',
-            'bright_blue': '\\033[94m',
-            'bright_magenta': '\\033[95m',
-            'bright_cyan': '\\033[96m',
-            'bright_white': '\\033[97m',
-            'orange': '\\033[38;2;255;165;0m',
-            'purple': '\\033[95m',  # alias for magenta
-            'pink': '\\033[95m',    # alias for magenta
+        return dict(self.config._sections["COLORS"])
+
+    def get_ansi_colors(self) -> dict:
+        """
+        Get colors as ANSI escape codes for terminal output.
+
+        Returns:
+            dict: color name to ANSI code
+        """
+        # Map hex codes to ANSI codes (basic mapping for demonstration)
+        hex_to_ansi = {
+            '#000000': '\033[0m',
+            '#FFFFFF': '\033[1m',
+            '#888888': '\033[2m',
+            '#FF5555': '\033[91m',
+            '#50FA7B': '\033[92m',
+            '#F1FA8C': '\033[93m',
+            '#BD93F9': '\033[94m',
+            '#FF79C6': '\033[95m',
+            '#8BE9FD': '\033[96m',
+            '#F8F8F2': '\033[97m',
+            '#FFB86C': '\033[38;2;255;184;108m',
+            '#76D7A1': '\033[38;2;118;215;161m',
+            '#44475A': '\033[38;2;68;71;90m',
+            '#282A36': '\033[48;5;238m',
+            '#6272A4': '\033[38;2;98;114;164m',
         }
-
-        colors = self.config._sections["COLORS"]
-        resolved_colors = {}
-
+        colors = self.get_colors()
+        ansi_colors = {}
         for key, value in colors.items():
-            # If the value is a known color name, map it to ANSI code
-            if value.lower() in color_names:
-                resolved_colors[key] = color_names[value.lower()]
-            else:
-                # Assume it's already an ANSI code or keep as-is
-                resolved_colors[key] = value
-
-        return resolved_colors
+            ansi_colors[key] = hex_to_ansi.get(value, value)
+        return ansi_colors
 
     def set_default_username(self, username: str) -> None:
         """
@@ -153,12 +148,14 @@ class ConfigManager:
         Get cache expiry time in minutes.
 
         Returns:
-            Number of minutes before cache expires
+            Number of minutes before cache expires (minimum 1)
         """
         minutes_str = self.config.get(
             'DEFAULT', 'cache_expiry_minutes', fallback='15')
         try:
-            return int(minutes_str)
+            minutes = int(minutes_str)
+            # Ensure cache expiry is at least 1 minute
+            return max(1, minutes)
         except ValueError:
             return 15
 
@@ -167,8 +164,11 @@ class ConfigManager:
         Set cache expiry time in minutes.
 
         Args:
-            minutes: Number of minutes before cache expires
+            minutes: Number of minutes before cache expires (minimum 1)
         """
+        # Ensure cache expiry is at least 1 minute
+        minutes = max(1, minutes)
+
         if 'DEFAULT' not in self.config:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['cache_expiry_minutes'] = str(minutes)
