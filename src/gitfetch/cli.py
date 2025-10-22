@@ -189,8 +189,8 @@ def main() -> int:
             print("\n✅ Configuration saved! You can now use gitfetch.\n")
 
         # Initialize components
-        cache_expiry = config_manager.get_cache_expiry_hours()
-        cache_manager = CacheManager(cache_expiry_hours=cache_expiry)
+        cache_expiry = config_manager.get_cache_expiry_minutes()
+        cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
         provider = config_manager.get_provider()
         provider_url = config_manager.get_provider_url()
         token = config_manager.get_token()
@@ -427,6 +427,23 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             else:
                 print("Please ensure you have a valid token configured")
             return False
+
+        # Ask for cache expiry time
+        cache_expiry_input = input(
+            "Cache expiry in minutes (default: 15, Enter for default): "
+        ).strip()
+        if cache_expiry_input:
+            try:
+                cache_expiry = int(cache_expiry_input)
+                if cache_expiry < 1:
+                    print("Cache expiry must be >= 1 min. Using default: 15")
+                    cache_expiry = 15
+                config_manager.set_cache_expiry_minutes(cache_expiry)
+            except ValueError:
+                print("Invalid input. Using default: 15 minutes.")
+                config_manager.set_cache_expiry_minutes(15)
+        else:
+            config_manager.set_cache_expiry_minutes(15)
 
         # Save configuration
         config_manager.set_default_username(username)

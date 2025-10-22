@@ -15,14 +15,14 @@ class CacheManager:
     CACHE_DIR = Path.home() / ".local" / "share" / "gitfetch"
     DB_FILE = CACHE_DIR / "cache.db"
 
-    def __init__(self, cache_expiry_hours: int = 6):
+    def __init__(self, cache_expiry_minutes: int = 15):
         """
         Initialize the cache manager.
 
         Args:
-            cache_expiry_hours: Hours before cache expires (default: 6)
+            cache_expiry_minutes: Minutes before cache expires (default: 15)
         """
-        self.cache_expiry_hours = cache_expiry_hours
+        self.cache_expiry_minutes = cache_expiry_minutes
         self._ensure_cache_dir()
         self._init_database()
 
@@ -255,7 +255,7 @@ class CacheManager:
         Returns:
             True if expired, False otherwise
         """
-        expiry_time = datetime.now() - timedelta(hours=self.cache_expiry_hours)
+        expiry_time = datetime.now() - timedelta(minutes=self.cache_expiry_minutes)
         return cached_at < expiry_time
 
     def list_cached_accounts(self) -> list[tuple[str, datetime]]:
