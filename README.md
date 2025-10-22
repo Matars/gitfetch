@@ -132,7 +132,7 @@ On first run, gitfetch will initialize and ask you to configure your default Git
 
 ```bash
 gitfetch
-````
+```
 
 This creates:
 
