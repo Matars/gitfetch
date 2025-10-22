@@ -101,13 +101,38 @@ uv tool install git+https://github.com/Matars/gitfetch
 pipx install git+https://github.com/Matars/gitfetch
 ```
 
+## Development
+
+This project uses a Makefile for common development tasks. After cloning the repository, you can use these make commands:
+
+### Setup
+
+```bash
+make install  # Install runtime dependencies
+make dev      # Install in development mode (editable install)
+```
+
+### Testing
+
+```bash
+make test     # Run tests with pytest
+```
+
+````
+### Development Workflow
+
+1. Clone the repository
+2. Run `make dev` to set up development environment
+3. Make your changes
+4. Run `make test` to ensure tests pass
+
 ## First Run
 
 On first run, gitfetch will initialize and ask you to configure your default GitHub username:
 
 ```bash
 gitfetch
-```
+````
 
 This creates:
 
@@ -271,14 +296,14 @@ The configuration file is automatically created on first run. See `docs/provider
 ```ini
 [DEFAULT]
 username = yourusername
-cache_expiry_hours = 24
+cache_expiry_minutes = 15
 provider = github
 provider_url = https://api.github.com
 custom_box = ■
 ```
 
 - `username`: Your default username (automatically detected)
-- `cache_expiry_hours`: How long to keep cached data (default: 24 hours)
+- `cache_expiry_minutes`: How long to keep cached data (default: 15 minutes)
 - `provider`: Git hosting provider (github, gitlab, gitea, sourcehut)
 - `provider_url`: API URL for the provider
 - `custom_box`: Character used for contribution blocks (default: ■)
@@ -324,6 +349,7 @@ rm ~/.config/gitfetch/cache.db
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
 
 ### Contributers
+
 - Zeviraty: Small fixes, color configuration
 - Vaishnav-Sabari-Girish: Better installation instructions
 - Noirbizzarre: Added installation instructions using uv and pipx
