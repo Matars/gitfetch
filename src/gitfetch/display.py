@@ -558,51 +558,8 @@ class DisplayFormatter:
 
     def _get_local_contribution_weeks(self):
         """Get contribution weeks from local git repository."""
-        from datetime import datetime, timedelta
-        import collections
-
-        # Get commit dates
-        result = subprocess.run(
-            ['git', 'log', '--pretty=format:%ai', '--all'],
-            capture_output=True, text=True, cwd='.'
-        )
-        if result.returncode != 0:
-            raise Exception("Failed to get git log")
-
-        commits = result.stdout.strip().split('\n')
-        if not commits or commits == ['']:
-            return []
-
-        # Parse dates and count commits per day
-        commit_counts = collections.Counter()
-        for commit in commits:
-            if commit:
-                date_str = commit.split(' ')[0]  # YYYY-MM-DD
-                commit_counts[date_str] += 1
-
-        # Get date range (last year)
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=365)
-
-        # Build weeks
-        weeks = []
-        current_date = start_date
-        while current_date <= end_date:
-            week = {'contributionDays': []}
-            for i in range(7):
-                day_date = current_date + timedelta(days=i)
-                if day_date > end_date:
-                    break
-                count = commit_counts.get(day_date.isoformat(), 0)
-                week['contributionDays'].append({
-                    'contributionCount': count,
-                    'date': day_date.isoformat()
-                })
-            if week['contributionDays']:
-                weeks.append(week)
-            current_date += timedelta(days=7)
-
-        return weeks
+        from .fetcher import BaseFetcher
+        return BaseFetcher._build_contribution_graph_from_git()
 
     def _get_graph_text(self, vertical=False):
         text = subprocess.check_output(

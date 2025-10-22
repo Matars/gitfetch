@@ -7,7 +7,9 @@ from typing import Optional, Dict, Any
 import subprocess
 import json
 import sys
-import os, re
+import os
+import re
+
 
 class BaseFetcher(ABC):
     """Abstract base class for git hosting provider fetchers."""
@@ -57,6 +59,67 @@ class BaseFetcher(ABC):
             Dictionary containing user statistics
         """
         pass
+
+    @staticmethod
+    def _build_contribution_graph_from_git(repo_path: str = ".") -> list:
+        """
+        Build contribution graph from local .git history.
+
+        Args:
+            repo_path: Path to the git repository (default: current dir)
+
+        Returns:
+            List of weeks with contribution data
+        """
+        from datetime import datetime, timedelta
+        import collections
+
+        try:
+            # Get commit dates
+            result = subprocess.run(
+                ['git', 'log', '--pretty=format:%ai', '--all'],
+                capture_output=True, text=True, cwd=repo_path
+            )
+            if result.returncode != 0:
+                return []
+
+            commits = result.stdout.strip().split('\n')
+            if not commits or commits == ['']:
+                return []
+
+            # Parse dates and count commits per day
+            commit_counts = collections.Counter()
+            for commit in commits:
+                if commit:
+                    date_str = commit.split(' ')[0]  # YYYY-MM-DD
+                    commit_counts[date_str] += 1
+
+            # Get date range (last year)
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=365)
+
+            # Build weeks
+            weeks = []
+            current_date = start_date
+            while current_date <= end_date:
+                week = {'contributionDays': []}
+                for i in range(7):
+                    day_date = current_date + timedelta(days=i)
+                    if day_date > end_date:
+                        break
+                    count = commit_counts.get(day_date.isoformat(), 0)
+                    week['contributionDays'].append({
+                        'contributionCount': count,
+                        'date': day_date.isoformat()
+                    })
+                if week['contributionDays']:
+                    weeks.append(week)
+                current_date += timedelta(days=7)
+
+            return weeks
+
+        except Exception:
+            return []
 
 
 class GitHubFetcher(BaseFetcher):
@@ -114,7 +177,8 @@ class GitHubFetcher(BaseFetcher):
             )
             if result.returncode != 0:
                 try:
-                    yml = open(os.path.expanduser("~/.config/gh/hosts.yml"),'r').read()
+                    yml = open(os.path.expanduser(
+                        "~/.config/gh/hosts.yml"), 'r').read()
                     user = re.findall(" +user: +(.*)", yml)
                     if len(user) != 0:
                         return user[0]
