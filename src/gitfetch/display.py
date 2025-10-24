@@ -27,7 +27,8 @@ class DisplayFormatter:
                  show_grid: bool = True,
                  custom_width: Optional[int] = None,
                  custom_height: Optional[int] = None,
-                 graph_timeline: bool = False):
+                 graph_timeline: bool = False,
+                 local_mode: bool = False):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -49,6 +50,7 @@ class DisplayFormatter:
         self.custom_width = custom_width
         self.custom_height = custom_height
         self.graph_timeline = graph_timeline
+        self.local_mode = local_mode
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -316,14 +318,44 @@ class DisplayFormatter:
             info_part = (right_side[i] if i < len(right_side) else "")
             print(f"{graph_part}{padding}  {info_part}")
 
+    def _reverse_truncate(self, line: str, max_width: int):
+        pattern = r"(\x1b\[[0-9;]*m)(.*?)(?=(\x1b\[[0-9;]*m)|$)"
+        matches = re.findall(pattern, line, flags=re.DOTALL)
+        segments = [(m[0], m[1]) for m in matches]
+
+        width = sum(len(text) for _, text in segments)
+
+        if width <= max_width:
+            return line.rjust(max_width)
+
+        result = []
+        remaining = max_width
+
+        for color, text in reversed(segments):
+            if remaining <= 0:
+                break
+            if len(text) <= remaining:
+                result.append((color, text))
+                remaining -= len(text)
+            else:
+                result.append((color, text[-remaining:]))
+                remaining = 0
+
+        final = ''.join(color + text for color, text in reversed(result))
+        final += self.colors.get('reset', '\x1b[0m')
+        return final
+
     def _display_full(self, username: str, user_data: Dict[str, Any],
                       stats: Dict[str, Any], spaced=True) -> None:
         """Display full layout with graph and all info sections."""
-        if self.graph_timeline and not self.show_grid:
-            # Show git timeline graph (only when no grid is shown)
+        left_side = []
+        ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
+        if self.graph_timeline:
+            # Show git timeline graph instead of contribution graph
             try:
-                timeline_text = self._get_graph_text()
-                print(timeline_text)
+                timeline_text = self._get_graph_text(False)
+                left_side = timeline_text.split("\n")
+
                 # Still show right side info
                 contrib_graph = stats.get('contribution_graph', [])
                 info_lines = (self._format_user_info(user_data, stats)
@@ -342,10 +374,18 @@ class DisplayFormatter:
                     right_side.append("")
                     right_side.extend(achievements)
 
-                if right_side:
+                right_width = max(
+                    self._display_width(line) for line in right_side
+                )
+
+                offset = 80
+                max_width = self.terminal_width - right_width - offset
+
+                if right_side and left_side:
                     print()  # Add spacing
-                    for line in right_side:
-                        print(line)
+                    for l, r in zip(left_side, right_side):
+                        print(self._reverse_truncate(l, max_width),
+                              self.colors['reset'], r)
             except Exception as e:
                 print(f"Error displaying timeline: {e}")
             return
@@ -354,7 +394,6 @@ class DisplayFormatter:
         graph_width = (self.custom_width if self.custom_width is not None
                        else max(50, (self.terminal_width - 10) * 3 // 4))
 
-        left_side = []
         if self.show_grid:
             left_side = self._get_contribution_graph_lines(
                 contrib_graph,
@@ -453,6 +492,14 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
+        if self.local_mode:
+            try:
+                weeks_data = self._get_local_contribution_weeks()
+            except Exception as e:
+                return [f"Error getting local contributions: {e}"]
+        else:
+            weeks_data = weeks_data
+
         recent_weeks = self._get_recent_weeks(weeks_data)
         total_contribs = self._calculate_total_contributions(recent_weeks)
 
@@ -509,22 +556,66 @@ class DisplayFormatter:
 
         return lines
 
-    def _get_graph_text(vertical=False):
+    def _get_local_contribution_weeks(self):
+        """Get contribution weeks from local git repository."""
+        from .fetcher import BaseFetcher
+        return BaseFetcher._build_contribution_graph_from_git()
+
+    def _get_graph_text(self, vertical=False):
         text = subprocess.check_output(
-            ['git', '--no-pager', 'log', '--graph', '--all', '--pretty=format:""']).decode().replace('"', '')
+            ['git', '--no-pager', 'log', '--color=always',
+                '--graph', '--all', '--pretty=format:""']
+        ).decode().replace('"', '')
+
         if vertical:
             return text
+
         text = text.translate(str.maketrans(
             r"\/", r"\/"[::-1])).replace("|", "-")
+
+        ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
+
         lines = text.splitlines()
-        max_len = max(len(line) for line in lines)
-        padded = [line.ljust(max_len) for line in lines]
+        parsed_lines = []
+        for line in lines:
+            parts = ANSI_PATTERN.split(line)
+            codes = ANSI_PATTERN.findall(line)
+            current_color = ''
+            parsed = []
+            for i, seg in enumerate(parts):
+                for ch in seg:
+                    parsed.append((ch, current_color))
+                if i < len(codes):
+                    code = codes[i]
+                    current_color = '' if code == '\033[0m' else code
+            parsed_lines.append(parsed)
+
+        if not parsed_lines:
+            return ''
+
+        max_len = max(len(line) for line in parsed_lines)
+        padded = [line + [(' ', '')] * (max_len - len(line))
+                  for line in parsed_lines]
 
         rotated = []
         for col in reversed(range(max_len)):
-            new_line = ''.join(padded[row][col] for row in range(len(padded)))
-            rotated.append(new_line)
-        return '\n'.join(rotated)
+            new_row = [padded[row][col] for row in range(len(padded))]
+            rotated.append(new_row)
+
+        out_lines = []
+        for row in rotated:
+            cur_color = ''
+            out_line = ''
+            for ch, color in row:
+                if color != cur_color:
+                    out_line += color
+                    cur_color = color
+                out_line += ch
+            if cur_color:
+                out_line += '\033[0m'
+            out_lines.append(out_line)
+
+        return '\n'.join(out_lines)
 
     def _format_user_info_compact(self, user_data: Dict[str, Any],
                                   stats: Dict[str, Any]) -> list:

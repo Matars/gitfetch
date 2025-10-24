@@ -152,6 +152,31 @@ Fetch stats for specific user:
 gitfetch username
 ```
 
+### Repository-Specific Stats
+
+Display contribution statistics for the current local git repository:
+
+```bash
+gitfetch --local
+```
+
+Shows commit activity over the last year, built from local git history
+
+```bash
+gitfetch --graph-timeline
+```
+
+Displays git commit timeline, build from local git history
+
+**Current Limitations:**
+
+- Only shows contribution graph and timeline
+- No repository metadata (stars, forks, issues, etc.)
+- No language statistics for the repository
+- Limited to local git history analysis
+
+If you would like to expand this feature and and parse more repository data, please open an issue or submit a PR!
+
 ### Cache Options
 
 Bypass cache and fetch fresh data:
