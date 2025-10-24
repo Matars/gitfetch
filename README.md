@@ -246,6 +246,59 @@ Combine multiple options:
 gitfetch --no-date --no-achievements --custom-box "█" --width 60
 ```
 
+## Configuration
+
+Configuration file location: `~/.config/gitfetch/gitfetch.conf`
+
+The configuration file is automatically created on first run. See `docs/providers.md` for detailed provider configuration and `docs/colors.md` for color customization options.
+
+### [DEFAULT] Section
+
+```ini
+[DEFAULT]
+username = yourusername
+cache_expiry_minutes = 15
+provider = github
+provider_url = https://api.github.com
+custom_box = ■
+```
+
+- `username`: Your default username (automatically detected)
+- `cache_expiry_minutes`: How long to keep cached data (default: 15 minutes)
+- `provider`: Git hosting provider (github, gitlab, gitea, sourcehut)
+- `provider_url`: API URL for the provider
+- `custom_box`: Character used for contribution blocks (default: ■)
+
+**Note**: Custom graph dimensions (`--width`, `--height`) and section visibility flags (`--no-*`) are command-line only and not saved in the configuration file.
+However if there is a need for it to be added to the config file please open an issue.
+
+### [COLORS] Section
+
+gitfetch supports extensive color customization using hex color codes or predefined color names.
+
+#### Available Colors
+
+- **Text formatting**: `reset`, `bold`, `dim`
+- **Basic colors**: `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`
+- **Special colors**: `orange`, `accent`, `header`, `muted`
+- **Contribution graph levels**: `0` (lowest) to `4` (highest)
+
+#### Example Configuration
+
+```ini
+[COLORS]
+header = #0366d6
+accent = #6f42c1
+muted = #586069
+0 = #ebedf0  # Light gray background
+1 = #9be9a8  # Light green background
+2 = #40c463  # Medium green
+3 = #30a14e  # Dark green
+4 = #216e39  # Darkest green
+```
+
+See `docs/colors.md` for the complete list of supported color names and hex codes.
+
 ### Layout Control
 
 gitfetch automatically adapts to your terminal size, but you can control spacing:
@@ -286,46 +339,6 @@ The system considers both terminal width AND height to ensure optimal display. F
 
 You can override automatic layout selection using the `--width` and `--height` flags to set custom graph dimensions, which will force gitfetch to adapt the layout accordingly.
 
-
-## Configuration
-
-Configuration file location: `~/.config/gitfetch/gitfetch.conf`
-
-The configuration file is automatically created on first run. See `docs/providers.md` for detailed provider configuration and `docs/colors.md` for color customization options.
-
-### [DEFAULT] Section
-
-```ini
-[DEFAULT]
-username = yourusername
-cache_expiry_minutes = 15
-provider = github
-provider_url = https://api.github.com
-custom_box = ■
-```
-
-- `username`: Your default username (automatically detected)
-- `cache_expiry_minutes`: How long to keep cached data (default: 15 minutes)
-- `provider`: Git hosting provider (github, gitlab, gitea, sourcehut)
-- `provider_url`: API URL for the provider
-- `custom_box`: Character used for contribution blocks (default: ■)
-
-**Note**: Custom graph dimensions (`--width`, `--height`) and section visibility flags (`--no-*`) are command-line only and not saved in the configuration file.
-Howerver if there is a need for it to be added to the config file please open an issue.
-
-### [COLORS] Section
-
-gitfetch supports extensive color customization. All colors use ANSI escape codes. See `docs/colors.md` for detailed color configuration options.
-
-````ini
-```ini
-[COLORS]
-reset = \033[0m
-bold = \033[1m
-# ... color definitions ...
-````
-
-See `docs/colors.md` for detailed color configuration options and customization examples.
 
 ## Supported Providers
 
