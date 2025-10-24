@@ -376,6 +376,8 @@ rm ~/.config/gitfetch/cache.db
 
 ### Contributers
 
+- ilonic23: Added nix packaging
+- quunarc: small code refactoring
 - Zeviraty: Small fixes, color configuration
 - Vaishnav-Sabari-Girish: Better installation instructions
 - Noirbizzarre: Added installation instructions using uv and pipx
