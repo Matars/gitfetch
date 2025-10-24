@@ -86,9 +86,9 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     general_group.add_argument(
-        "--repo",
+        "--local",
         action="store_true",
-        help="Fetch data specific to current repo (requires .git folder)"
+        help="Fetch data specific to current local repo (requires .git folder)"
     )
 
     visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
@@ -184,10 +184,10 @@ def main() -> int:
     try:
         args = parse_args()
 
-        # Check for --repo flag
-        if args.repo:
+        # Check for --local flag
+        if args.local:
             if not os.path.exists('.git'):
-                print("Error: --repo requires .git folder", file=sys.stderr)
+                print("Error: --local requires .git folder", file=sys.stderr)
                 return 1
 
         # Handle background refresh mode (hidden feature)
@@ -256,7 +256,7 @@ def main() -> int:
                                      not args.no_languages, not args.no_issues,
                                      not args.no_pr, not args.no_account,
                                      not args.no_grid, args.width, args.height,
-                                     args.graph_timeline, args.repo)
+                                     args.graph_timeline, args.local)
         if args.spaced:
             spaced = True
         elif args.not_spaced:

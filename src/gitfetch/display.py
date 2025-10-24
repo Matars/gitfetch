@@ -28,7 +28,7 @@ class DisplayFormatter:
                  custom_width: Optional[int] = None,
                  custom_height: Optional[int] = None,
                  graph_timeline: bool = False,
-                 repo_mode: bool = False):
+                 local_mode: bool = False):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -50,7 +50,7 @@ class DisplayFormatter:
         self.custom_width = custom_width
         self.custom_height = custom_height
         self.graph_timeline = graph_timeline
-        self.repo_mode = repo_mode
+        self.local_mode = local_mode
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -492,11 +492,11 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
-        if self.repo_mode:
+        if self.local_mode:
             try:
                 weeks_data = self._get_local_contribution_weeks()
             except Exception as e:
-                return [f"Error getting repo contributions: {e}"]
+                return [f"Error getting local contributions: {e}"]
         else:
             weeks_data = weeks_data
 
