@@ -30,8 +30,9 @@ jobs:
 
       - name: Update formula
         run: |
-          chmod +x homebrew-tap/.github/scripts/update-homebrew.sh
-          VERSION=${{ steps.get_version.outputs.version }} ./homebrew-tap/.github/scripts/update-homebrew.sh
+          cd homebrew-tap
+          chmod +x .github/scripts/update-homebrew.sh
+          VERSION=${{ steps.get_version.outputs.version }} ./.github/scripts/update-homebrew.sh
 
       - name: Commit and push
         run: |
