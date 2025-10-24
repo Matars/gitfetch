@@ -286,28 +286,6 @@ The system considers both terminal width AND height to ensure optimal display. F
 
 You can override automatic layout selection using the `--width` and `--height` flags to set custom graph dimensions, which will force gitfetch to adapt the layout accordingly.
 
-## Troubleshooting
-
-### Error: GitHub CLI is not authenticated
-
-```bash
-gh auth login
-```
-
-Follow the prompts to authenticate with GitHub.
-
-### Error: GitHub CLI (gh) is not installed
-
-Install GitHub CLI:
-
-- **macOS**: `brew install gh`
-- **Linux**: See https://github.com/cli/cli#installation
-
-### Check Authentication Status
-
-```bash
-gh auth status
-```
 
 ## Configuration
 
