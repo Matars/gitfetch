@@ -77,6 +77,17 @@ cd gitfetch-python
 makepkg -si
 ```
 
+### NixOS (Flake only)
+
+Add input to the flake:
+```nix
+gitfetch.url = "github:Matars/gitfetch"
+```
+And in ``environment.SystemPackages`` add:
+```nix
+inputs.gitfetch.packages.${system}.default
+```
+
 ### From the sources
 
 1. Clone this repo
