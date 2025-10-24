@@ -18,7 +18,7 @@
           version = "1.2.6";
           src = ./.;
           
-          # Основные зависимости
+          # Main dependencies
           propagatedBuildInputs = with pythonPackages; [
             requests
             readchar
@@ -37,7 +37,7 @@
         };
       in
       {
-        # Пакет доступен как `nix build`
+        # nix build
         packages.default = myPackage;
 
         # nix run
