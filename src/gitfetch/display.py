@@ -1024,23 +1024,18 @@ class DisplayFormatter:
 
     def _build_legend_spaced(self) -> str:
         """Build legend with GitHub's actual color palette (Kusa style)."""
-        # Color palette matching GitHub
-        colors = [
-            (0, '\033[38;2;235;237;240m'),      # #ebedf0 - Less
-            (1, '\033[38;2;155;233;168m'),      # #9be9a8
-            (4, '\033[38;2;64;196;99m'),        # #40c463
-            (8, '\033[38;2;48;161;78m'),        # #30a14e
-            (16, '\033[38;2;33;110;57m'),       # #216e39 - More
-        ]
-
+        # Build legend using configured hex colors for levels 0-4
+        levels = ['0', '1', '2', '3', '4']
         reset = '\033[0m'
 
         if not self.enable_color:
-            blocks = ' '.join(['■'] * 5)
+            blocks = ' '.join(['■'] * len(levels))
             return f"    Less {blocks} More"
 
         blocks_str = ""
-        for count, color in colors:
+        for lvl in levels:
+            hex_col = self.hex_colors.get(lvl, '#000000')
+            color = hex_to_ansi(hex_col, background=False)
             blocks_str += f"{color}■{reset} "
 
         return f"    Less {blocks_str}More"
