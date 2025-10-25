@@ -111,51 +111,9 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     visual_group.add_argument(
-        "--no-date",
-        action="store_true",
-        help="Hide month/date labels on contribution graph"
-    )
-
-    visual_group.add_argument(
         "--graph-only",
         action="store_true",
         help="Show only the contribution graph"
-    )
-
-    visual_group.add_argument(
-        "--no-achievements",
-        action="store_true",
-        help="Hide achievements section"
-    )
-
-    visual_group.add_argument(
-        "--no-languages",
-        action="store_true",
-        help="Hide languages section"
-    )
-
-    visual_group.add_argument(
-        "--no-issues",
-        action="store_true",
-        help="Hide issues section"
-    )
-
-    visual_group.add_argument(
-        "--no-pr",
-        action="store_true",
-        help="Hide pull requests section"
-    )
-
-    visual_group.add_argument(
-        "--no-account",
-        action="store_true",
-        help="Hide account information section"
-    )
-
-    visual_group.add_argument(
-        "--no-grid",
-        action="store_true",
-        help="Hide contribution grid/graph"
     )
 
     visual_group.add_argument(
@@ -188,6 +146,49 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         "--graph-timeline",
         action="store_true",
         help="Show git timeline graph instead of contribution graph"
+    )
+
+    visibility_group = parser.add_argument_group('\033[95mVisibility\033[0m')
+    visibility_group.add_argument(
+        "--no-date",
+        action="store_true",
+        help="Hide month/date labels on contribution graph"
+    )
+
+    visibility_group.add_argument(
+        "--no-achievements",
+        action="store_true",
+        help="Hide achievements section"
+    )
+
+    visibility_group.add_argument(
+        "--no-languages",
+        action="store_true",
+        help="Hide languages section"
+    )
+
+    visibility_group.add_argument(
+        "--no-issues",
+        action="store_true",
+        help="Hide issues section"
+    )
+
+    visibility_group.add_argument(
+        "--no-pr",
+        action="store_true",
+        help="Hide pull requests section"
+    )
+
+    visibility_group.add_argument(
+        "--no-account",
+        action="store_true",
+        help="Hide account information section"
+    )
+
+    visibility_group.add_argument(
+        "--no-grid",
+        action="store_true",
+        help="Hide contribution grid/graph"
     )
 
     return parser.parse_args()
