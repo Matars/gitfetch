@@ -13,6 +13,25 @@ from .text_patterns import CHAR_PATTERNS
 import subprocess
 
 
+def hex_to_ansi(hex_color: str, background: bool = False) -> str:
+    """Convert hex color to ANSI escape code."""
+    if not hex_color.startswith('#'):
+        return hex_color  # Already ANSI or invalid
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
+        return hex_color
+    try:
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        if background:
+            return f'\033[48;2;{r};{g};{b}m'
+        else:
+            return f'\033[38;2;{r};{g};{b}m'
+    except ValueError:
+        return hex_color
+
+
 class DisplayFormatter:
     """Formats and displays git provider stats in a neofetch-style layout."""
 
@@ -40,6 +59,7 @@ class DisplayFormatter:
         self.available_height = max(10, self.terminal_height - 2)
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_ansi_colors()
+        self.hex_colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
         self.show_date = (show_date if show_date is not None
                           else config_manager.get_show_date())
@@ -1288,22 +1308,18 @@ class DisplayFormatter:
             return f"{self.custom_box} "
 
         reset = '\033[0m'
-        # Map contribution count to RGB background colors (matching spaced)
+        # Map contribution count to configurable color levels
         if count == 0:
-            # #ebedf0 - very light gray
-            bg = '\033[48;2;235;237;240m'
+            level = '0'
         elif count < 3:
-            # #9be9a8
-            bg = '\033[48;2;155;233;168m'
+            level = '1'
         elif count < 7:
-            # #40c463
-            bg = '\033[48;2;64;196;99m'
+            level = '2'
         elif count < 13:
-            # #30a14e
-            bg = '\033[48;2;48;161;78m'
+            level = '3'
         else:
-            # #216e39
-            bg = '\033[48;2;33;110;57m'
+            level = '4'
+        bg = hex_to_ansi(self.hex_colors[level], background=True)
 
         # Two background-coloured spaces produce a filled square that
         # visually joins with adjacent squares.
@@ -1319,22 +1335,18 @@ class DisplayFormatter:
             return f'{self.custom_box} '
 
         reset = '\033[0m'
-        # Map contributions to GitHub's color palette
+        # Map contributions to configurable color levels
         if count == 0:
-            # #ebedf0 - very light gray
-            color = '\033[38;2;235;237;240m'
+            level = '0'
         elif count < 3:
-            # #9be9a8 - light green
-            color = '\033[38;2;155;233;168m'
+            level = '1'
         elif count < 7:
-            # #40c463 - medium green
-            color = '\033[38;2;64;196;99m'
+            level = '2'
         elif count < 13:
-            # #30a14e - darker green
-            color = '\033[38;2;48;161;78m'
+            level = '3'
         else:
-            # #216e39 - darkest green
-            color = '\033[38;2;33;110;57m'
+            level = '4'
+        color = hex_to_ansi(self.hex_colors[level], background=False)
 
         # Use custom box character + space = 2 chars wide
         return f"{color}{self.custom_box}{reset} "
