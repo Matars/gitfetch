@@ -49,6 +49,7 @@ class DisplayFormatter:
                  custom_height: Optional[int] = None,
                  graph_timeline: bool = False,
                  local_mode: bool = False,
+                 shape: Optional[list] = None,
                  text: Optional[str] = None,
                  text_patterns: Optional[dict] = None):
         """Initialize the display formatter."""
@@ -78,6 +79,12 @@ class DisplayFormatter:
         # Allow overriding or extending the built-in character patterns.
         # If not provided, fall back to bundled CHAR_PATTERNS.
         self.text_patterns = text_patterns or CHAR_PATTERNS
+
+        # Store shape (may be None or list/str). If simulating text or
+        # shape, always suppress month/date line because month labels don't
+        # align with simulated grids.
+        self.shape = shape
+        self.suppress_month_line = bool(self.text) or bool(self.shape)
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -572,10 +579,12 @@ class DisplayFormatter:
 
         lines = [*header_lines]
 
-        if self.show_date:
+        if self.suppress_month_line or not self.show_date:
+            month_line = None
+        else:
             month_line = self._build_month_line_spaced(display_weeks)
-            if month_line.strip():
-                lines.append(month_line)
+        if month_line and month_line.strip():
+            lines.append(month_line)
 
         # Add grid rows (no vertical spacing between rows)
         for row_idx, row in enumerate(day_rows):

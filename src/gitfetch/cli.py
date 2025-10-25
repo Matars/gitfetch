@@ -266,12 +266,24 @@ def main() -> int:
         # Handle show date setting
         show_date = not args.no_date
 
-        formatter = DisplayFormatter(config_manager, custom_box, show_date,
-                                     args.graph_only, not args.no_achievements,
-                                     not args.no_languages, not args.no_issues,
-                                     not args.no_pr, not args.no_account,
-                                     not args.no_grid, args.width, args.height,
-                                     args.graph_timeline, args.local, args.text)
+        formatter = DisplayFormatter(
+            config_manager,
+            custom_box,
+            show_date,
+            args.graph_only,
+            not args.no_achievements,
+            not args.no_languages,
+            not args.no_issues,
+            not args.no_pr,
+            not args.no_account,
+            not args.no_grid,
+            args.width,
+            args.height,
+            args.graph_timeline,
+            args.local,
+            args.shape,
+            args.text,
+        )
         if args.spaced:
             spaced = True
         elif args.not_spaced:
@@ -280,7 +292,7 @@ def main() -> int:
             spaced = True
 
         # If --text or --shape provided, simulate contribution graph
-        # and skip network/cache calls.
+        # and reuse cached metadata (issues, PRs, languages, achievements)
         if args.text or args.shape:
             if args.text and args.shape:
                 print("Error: --text and --shape cannot be used together",
@@ -293,7 +305,7 @@ def main() -> int:
                     text_grid = formatter._text_to_grid(args.text)
                     weeks = formatter._generate_weeks_from_text_grid(text_grid)
                 else:  # args.shape
-                    # Use the predefined shape pattern
+                    # Use the predefined shape pattern (shape may be a list)
                     shape_grid = formatter._shape_to_grid(args.shape)
                     weeks = formatter._generate_weeks_from_text_grid(
                         shape_grid)
@@ -301,14 +313,36 @@ def main() -> int:
                 print(f"Error generating graph: {e}", file=sys.stderr)
                 return 1
 
-            stats = {'contribution_graph': weeks}
-            # Minimal user_data for display purposes
-            display_name = args.username or args.text or args.shape
-            user_data = {
-                'name': display_name,
-                'bio': '',
-                'website': '',
-            }
+            # Try to reuse cached user metadata/stats when available
+            lookup_username = args.username or config_manager.get_default_username()
+            cached_user = None
+            cached_stats = None
+            if lookup_username:
+                cached_user = cache_manager.get_cached_user_data(
+                    lookup_username)
+                cached_stats = cache_manager.get_cached_stats(lookup_username)
+
+            if cached_stats:
+                # Replace only the contribution graph with our simulated weeks
+                cached_stats['contribution_graph'] = weeks
+                stats = cached_stats
+            else:
+                stats = {'contribution_graph': weeks}
+
+            if cached_user:
+                user_data = cached_user
+                display_name = cached_user.get('name') or lookup_username
+            else:
+                # Minimal fallback user_data for display purposes
+                display_name = (
+                    args.username
+                    or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
+                )
+                user_data = {
+                    'name': display_name,
+                    'bio': '',
+                    'website': '',
+                }
 
             formatter.display(
                 display_name,
