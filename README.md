@@ -387,7 +387,7 @@ rm ~/.config/gitfetch/cache.db
 
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
-- The `--text` contribution-graph simulation feature takes inspiration from and adapts ideas from [gelstudios/gitfiti](https://github.com/gelstudios/gitfiti) — credit to the project for the concept of painting the contribution calendar (this implementation only simulates the appearance and does not modify git history).
+- The `--text` and `--graph` contribution-graph simulation feature takes inspiration from and adapts ideas from [gelstudios/gitfiti](https://github.com/gelstudios/gitfiti) — credit to the project for the concept of painting the contribution calendar (this implementation only simulates the appearance and does not modify git history).
 
 ### Contributers
 
