@@ -23,7 +23,7 @@ A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sour
 - Cross-platform support (macOS and Linux)
 - First-run initialization with interactive provider selection
 - Customize contribution characters, hide/show sections, control display elements
-- Simulate contribution-graph pixel art from text using `--text "Your Text"` or predefined shapes using `--shape KITTY` (visual simulation only — does not create commits). This feature was inspired by and borrows the visual approach from gelstudios/gitfiti.
+- Simulate contribution-graph pixel art from text using `--text "Your Text"` or predefined shapes using `--shape kitty` (visual simulation only — does not create commits). This feature was inspired by and borrows the visual approach from gelstudios/gitfiti.
 - Flags for advanced configuration (e.g., `--no-date`, `--graph-only`, `--custom-box`, `--width`, `--height`) see full list below with `gitfetch --help`
 
 ## Supported Platforms
@@ -219,6 +219,20 @@ Customize contribution block characters:
 gitfetch --custom-box "██"
 gitfetch --custom-box "■"
 gitfetch --custom-box "●"
+```
+
+Create contribution graph art from predefined shapes:
+
+```bash
+gitfetch --shape kitty
+gitfetch --shape cat
+```
+
+Display multiple shapes with vertical spacing:
+
+```bash
+gitfetch --shape kitty cat
+gitfetch --shape heart star
 ```
 
 Set custom graph dimensions:
