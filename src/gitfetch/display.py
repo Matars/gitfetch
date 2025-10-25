@@ -1401,8 +1401,8 @@ class DisplayFormatter:
             for row_idx in range(7):
                 # row_idx 0 -> Sunday, row_idx 6 -> Saturday
                 intensity = text_grid[row_idx][col_idx]
-                # For --text mode, force all nonzero cells to level 3 (dark green)
-                count = 3 if intensity > 0 else 0
+                # Use intensity directly (0-4 matches color mapping)
+                count = intensity
                 # Use a fake date that increments per column for readability
                 week_days.append({
                     'contributionCount': count,
