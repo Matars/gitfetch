@@ -178,8 +178,10 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
 
     visual_group.add_argument(
         "--shape",
-        type=str,
-        help="Display predefined shape as contribution graph (simulation only)"
+        nargs='+',
+        help=("Display one or more predefined shapes as contribution graph "
+              "(simulation only). Provide multiple shapes after the option: "
+              "--shape kitty kitty")
     )
 
     visual_group.add_argument(

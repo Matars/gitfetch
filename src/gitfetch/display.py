@@ -1405,27 +1405,56 @@ class DisplayFormatter:
 
         return weeks
 
-    def _shape_to_grid(self, shape_name: str) -> list:
-        """Convert shape name to a 7xN grid of contribution levels (0-4)."""
-        if not shape_name:
+    def _shape_to_grid(self, shape_names) -> list:
+        """Convert one or more shape names to a 7xN grid of contribution
+        levels (0-4).
+
+        Accepts either a single shape name (str) or an iterable/list of
+        shape names. When multiple shapes are provided, they are concatenated
+        horizontally with a single-column spacer (vertical line of empty
+        cells) between each shape.
+        """
+        if not shape_names:
             return []
 
         patterns = self.text_patterns or CHAR_PATTERNS
-        shape_lower = shape_name.lower()
 
-        # Look for the shape in patterns
-        if shape_lower in patterns:
-            # Shapes are already 7xN grids, return as-is
-            return patterns[shape_lower]
+        # Normalize to list
+        if isinstance(shape_names, str):
+            shape_list = [shape_names]
         else:
-            available_shapes = [
-                k for k in patterns.keys()
-                if k not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ '
-            ]
-            raise ValueError(
-                f"Shape '{shape_name}' not found. Available shapes: "
-                f"{', '.join(available_shapes)}"
-            )
+            shape_list = list(shape_names)
+
+        # Resolve each shape into a 7xN grid
+        resolved = []
+        for name in shape_list:
+            key = name.lower()
+            if key not in patterns:
+                available_shapes = [
+                    k for k in patterns.keys()
+                    if k not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ '
+                ]
+                raise ValueError(
+                    f"Shape '{name}' not found. Available shapes: "
+                    f"{', '.join(available_shapes)}"
+                )
+            resolved.append([row[:] for row in patterns[key]])
+
+        # If only one shape, return it directly
+        if len(resolved) == 1:
+            return resolved[0]
+
+        # Concatenate horizontally with a one-column spacer between shapes
+        combined = [row[:] for row in resolved[0]]
+        for shape_grid in resolved[1:]:
+            # Add one-column spacer
+            for i in range(7):
+                combined[i].append(0)
+            # Append the next shape columns
+            for i in range(7):
+                combined[i].extend(shape_grid[i])
+
+        return combined
 
     def _strip_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text."""
