@@ -23,6 +23,7 @@ A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sour
 - Cross-platform support (macOS and Linux)
 - First-run initialization with interactive provider selection
 - Customize contribution characters, hide/show sections, control display elements
+- Simulate contribution-graph pixel art from text using `--text "Your Text"` or predefined shapes using `--shape KITTY` (visual simulation only — does not create commits). This feature was inspired by and borrows the visual approach from gelstudios/gitfiti.
 - Flags for advanced configuration (e.g., `--no-date`, `--graph-only`, `--custom-box`, `--width`, `--height`) see full list below with `gitfetch --help`
 
 ## Supported Platforms
@@ -350,7 +351,6 @@ The system considers both terminal width AND height to ensure optimal display. F
 
 You can override automatic layout selection using the `--width` and `--height` flags to set custom graph dimensions, which will force gitfetch to adapt the layout accordingly.
 
-
 ## Supported Providers
 
 gitfetch supports multiple Git hosting platforms:
@@ -373,6 +373,7 @@ rm ~/.config/gitfetch/cache.db
 
 - Inspired by the beautiful contribution graph design from [Kusa](https://github.com/Ryu0118/Kusa) by Ryu0118
 - Inspired by the very cool and extremely fun tool [songfetch](https://github.com/fwtwoo/songfetch) by fwtwoo
+- The `--text` contribution-graph simulation feature takes inspiration from and adapts ideas from [gelstudios/gitfiti](https://github.com/gelstudios/gitfiti) — credit to the project for the concept of painting the contribution calendar (this implementation only simulates the appearance and does not modify git history).
 
 ### Contributers
 
