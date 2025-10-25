@@ -9,6 +9,7 @@ import re
 import unicodedata
 from datetime import datetime
 from .config import ConfigManager
+from .text_patterns import CHAR_PATTERNS
 import subprocess
 
 
@@ -28,7 +29,9 @@ class DisplayFormatter:
                  custom_width: Optional[int] = None,
                  custom_height: Optional[int] = None,
                  graph_timeline: bool = False,
-                 local_mode: bool = False):
+                 local_mode: bool = False,
+                 text: Optional[str] = None,
+                 text_patterns: Optional[dict] = None):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -51,6 +54,10 @@ class DisplayFormatter:
         self.custom_height = custom_height
         self.graph_timeline = graph_timeline
         self.local_mode = local_mode
+        self.text = text
+        # Allow overriding or extending the built-in character patterns.
+        # If not provided, fall back to bundled CHAR_PATTERNS.
+        self.text_patterns = text_patterns or CHAR_PATTERNS
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -492,6 +499,13 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
+        if self.text:
+            # Generate fake weeks_data from text
+            text_grid = self._text_to_grid(self.text)
+            if not text_grid:
+                return ["No text to display"]
+            weeks_data = self._generate_weeks_from_text_grid(text_grid)
+
         if self.local_mode:
             try:
                 weeks_data = self._get_local_contribution_weeks()
@@ -1267,8 +1281,10 @@ class DisplayFormatter:
     def _get_contribution_block(self, count: int) -> str:
         """Return a fixed-width block representing contribution intensity."""
         if not self.enable_color:
-            # Use custom character for all intensities when no color
-            return f'{self.custom_box} '
+            # When colors are disabled, use the custom box plus a space so
+            # the block remains 2 characters wide and consistent with the
+            # spaced rendering.
+            return f"{self.custom_box} "
 
         reset = '\033[0m'
         if count == 0:
@@ -1282,6 +1298,10 @@ class DisplayFormatter:
         else:
             color = self.colors['4']
 
+        # Keep trailing space to match original (spaced) behaviour. This
+        # reverts the compact-only change so --not-spaced won't break
+        # rendering. If true compact rendering is desired later, handle it
+        # in the caller or via a dedicated flag.
         return f"{color}{self.custom_box}{reset} "
 
     def _get_contribution_block_spaced(self, count: int) -> str:
@@ -1313,6 +1333,85 @@ class DisplayFormatter:
 
         # Use custom box character + space = 2 chars wide
         return f"{color}{self.custom_box}{reset} "
+
+    def _text_to_grid(self, text: str) -> list:
+        """Convert text to a 7xN grid of contribution levels (0-4)."""
+        if not text:
+            return []
+
+        patterns = self.text_patterns or CHAR_PATTERNS
+
+        # Only allow A-Z and space for text mode
+        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ ')
+
+        grid = []
+        for char in text.upper():
+            if char not in allowed_chars:
+                raise ValueError(
+                    f"Text mode only supports A-Z and space. "
+                    f"Use --shape for predefined shapes. Got: '{char}'"
+                )
+
+            pattern = patterns.get(char, patterns.get(' ', []))
+            if not grid:
+                # Make a shallow copy of each row to avoid mutating source
+                grid = [row[:] for row in pattern]
+            else:
+                for i in range(7):
+                    grid[i].extend(pattern[i])
+            # Always add one-column spacer after each character
+            for i in range(7):
+                grid[i].append(0)
+
+        return grid
+
+    def _generate_weeks_from_text_grid(self, text_grid: list) -> list:
+        """Generate fake weeks_data from text grid for simulation."""
+        if not text_grid or not text_grid[0]:
+            return []
+
+        # text_grid is 7 rows x N columns
+        num_columns = len(text_grid[0])
+        weeks = []
+
+        # Each column in the text grid represents one week (7 days).
+        for col_idx in range(num_columns):
+            week_days = []
+            for row_idx in range(7):
+                # row_idx 0 -> Sunday, row_idx 6 -> Saturday
+                count = text_grid[row_idx][col_idx] * 10
+                # Use a fake date that increments per column for readability
+                week_days.append({
+                    'contributionCount': count,
+                    'date': f'2023-01-{col_idx + 1:02d}'
+                })
+            weeks.append({
+                'contributionDays': week_days
+            })
+
+        return weeks
+
+    def _shape_to_grid(self, shape_name: str) -> list:
+        """Convert shape name to a 7xN grid of contribution levels (0-4)."""
+        if not shape_name:
+            return []
+
+        patterns = self.text_patterns or CHAR_PATTERNS
+        shape_lower = shape_name.lower()
+
+        # Look for the shape in patterns
+        if shape_lower in patterns:
+            # Shapes are already 7xN grids, return as-is
+            return patterns[shape_lower]
+        else:
+            available_shapes = [
+                k for k in patterns.keys()
+                if k not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ '
+            ]
+            raise ValueError(
+                f"Shape '{shape_name}' not found. Available shapes: "
+                f"{', '.join(available_shapes)}"
+            )
 
     def _strip_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text."""
