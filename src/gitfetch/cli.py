@@ -318,9 +318,16 @@ def main() -> int:
             cached_user = None
             cached_stats = None
             if lookup_username:
-                cached_user = cache_manager.get_cached_user_data(
-                    lookup_username)
-                cached_stats = cache_manager.get_cached_stats(lookup_username)
+                # Prefer fresh cache, but fall back to stale cache so
+                # simulated graphs can still show metadata like streaks
+                cached_user = (
+                    cache_manager.get_cached_user_data(lookup_username)
+                    or cache_manager.get_stale_cached_user_data(lookup_username)
+                )
+                cached_stats = (
+                    cache_manager.get_cached_stats(lookup_username)
+                    or cache_manager.get_stale_cached_stats(lookup_username)
+                )
 
             if cached_stats:
                 # Replace only the contribution graph with our simulated weeks
