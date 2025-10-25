@@ -229,12 +229,13 @@ def main() -> int:
                 if resp.status_code == 200:
                     latest = resp.json()["tag_name"].lstrip("v")
                     if latest != __version__:
-                        print(
-                            f"\033[93mUpdate available: {latest}\n"
-                            "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                            "Or update using your package manager:\n"
-                            "\t\tbrew update && brew upgrade gitfetch\n"
-                            "\t\tpacman -Syu gitfetch-python\n"
+                        print(f"\033[93mUpdate available: {latest}\n"
+                              + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                              + "Or update using your package manager:\n"
+                              + "\t\tbrew update && brew upgrade gitfetch\n"
+                              + "\t\tpip install --upgrade gitfetch\n"
+                              + "\t\tpacman -Syu gitfetch-python\n"
+                              + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
                     else:
                         print("You are using the latest version.")
                 else:
