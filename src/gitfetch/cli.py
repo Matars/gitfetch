@@ -171,6 +171,18 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     visual_group.add_argument(
+        "--text",
+        type=str,
+        help="Display text as contribution graph pattern (simulation only)"
+    )
+
+    visual_group.add_argument(
+        "--shape",
+        type=str,
+        help="Display predefined shape as contribution graph (simulation only)"
+    )
+
+    visual_group.add_argument(
         "--graph-timeline",
         action="store_true",
         help="Show git timeline graph instead of contribution graph"
@@ -217,7 +229,8 @@ def main() -> int:
                         print(
                             f"\033[93mUpdate available: {latest}\n"
                             "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                            "Or run: brew update && brew upgrade gitfetch\033[0m")
+                            "Or run:\n"
+                            "\t\tbrew update && brew upgrade gitfetch\033[0m")
                     else:
                         print("You are using the latest version.")
                 else:
@@ -256,13 +269,52 @@ def main() -> int:
                                      not args.no_languages, not args.no_issues,
                                      not args.no_pr, not args.no_account,
                                      not args.no_grid, args.width, args.height,
-                                     args.graph_timeline, args.local)
+                                     args.graph_timeline, args.local, args.text)
         if args.spaced:
             spaced = True
         elif args.not_spaced:
             spaced = False
         else:
             spaced = True
+
+        # If --text or --shape provided, simulate contribution graph
+        # and skip network/cache calls.
+        if args.text or args.shape:
+            if args.text and args.shape:
+                print("Error: --text and --shape cannot be used together",
+                      file=sys.stderr)
+                return 1
+
+            try:
+                if args.text:
+                    # Build a fake contribution_graph from the text
+                    text_grid = formatter._text_to_grid(args.text)
+                    weeks = formatter._generate_weeks_from_text_grid(text_grid)
+                else:  # args.shape
+                    # Use the predefined shape pattern
+                    shape_grid = formatter._shape_to_grid(args.shape)
+                    weeks = formatter._generate_weeks_from_text_grid(
+                        shape_grid)
+            except Exception as e:
+                print(f"Error generating graph: {e}", file=sys.stderr)
+                return 1
+
+            stats = {'contribution_graph': weeks}
+            # Minimal user_data for display purposes
+            display_name = args.username or args.text or args.shape
+            user_data = {
+                'name': display_name,
+                'bio': '',
+                'website': '',
+            }
+
+            formatter.display(
+                display_name,
+                user_data,
+                stats,
+                spaced=spaced,
+            )
+            return 0
 
         # Handle cache clearing
         if args.clear_cache:
@@ -315,7 +367,7 @@ def main() -> int:
                                       stale_stats, spaced=spaced)
 
                     # Spawn a completely independent background process
-                    # Use the same Python interpreter and call gitfetch with hidden flag
+                    # Spawn background refresh process
                     try:
                         subprocess.Popen(
                             [sys.executable, "-m", "gitfetch.cli",
@@ -323,7 +375,7 @@ def main() -> int:
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             stdin=subprocess.DEVNULL,
-                            start_new_session=True  # Detach from parent process
+                            start_new_session=True,  # detach from parent
                         )
                     except Exception:
                         # If subprocess fails, silently continue
