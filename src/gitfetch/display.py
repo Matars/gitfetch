@@ -1279,30 +1279,35 @@ class DisplayFormatter:
             return date_string
 
     def _get_contribution_block(self, count: int) -> str:
-        """Return a fixed-width block representing contribution intensity."""
+        """Return compact block (visual: no light gap between weeks).
+
+        """
         if not self.enable_color:
-            # When colors are disabled, use the custom box plus a space so
-            # the block remains 2 characters wide and consistent with the
-            # spaced rendering.
+            # When colors are disabled fall back to the original box+space
+            # so output remains readable and aligned.
             return f"{self.custom_box} "
 
         reset = '\033[0m'
+        # Map contribution count to RGB background colors (matching spaced)
         if count == 0:
-            color = self.colors['0']
+            # #ebedf0 - very light gray
+            bg = '\033[48;2;235;237;240m'
         elif count < 3:
-            color = self.colors['1']
+            # #9be9a8
+            bg = '\033[48;2;155;233;168m'
         elif count < 7:
-            color = self.colors['2']
+            # #40c463
+            bg = '\033[48;2;64;196;99m'
         elif count < 13:
-            color = self.colors['3']
+            # #30a14e
+            bg = '\033[48;2;48;161;78m'
         else:
-            color = self.colors['4']
+            # #216e39
+            bg = '\033[48;2;33;110;57m'
 
-        # Keep trailing space to match original (spaced) behaviour. This
-        # reverts the compact-only change so --not-spaced won't break
-        # rendering. If true compact rendering is desired later, handle it
-        # in the caller or via a dedicated flag.
-        return f"{color}{self.custom_box}{reset} "
+        # Two background-coloured spaces produce a filled square that
+        # visually joins with adjacent squares.
+        return f"{bg}  {reset}"
 
     def _get_contribution_block_spaced(self, count: int) -> str:
         """
@@ -1379,7 +1384,9 @@ class DisplayFormatter:
             week_days = []
             for row_idx in range(7):
                 # row_idx 0 -> Sunday, row_idx 6 -> Saturday
-                count = text_grid[row_idx][col_idx] * 10
+                intensity = text_grid[row_idx][col_idx]
+                # Use intensity directly (0-4 matches color mapping)
+                count = intensity
                 # Use a fake date that increments per column for readability
                 week_days.append({
                     'contributionCount': count,
