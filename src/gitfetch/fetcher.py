@@ -258,6 +258,26 @@ class GitHubFetcher(BaseFetcher):
         # Fetch contribution graph
         contrib_graph = self._fetch_contribution_graph(username)
 
+        # Calculate current contribution streak (most recent consecutive days
+        # with contributions). Flatten days in chronological order and then
+        # compute streak ending with the most recent day.
+        current_streak = 0
+        try:
+            all_contributions = []
+            for week in contrib_graph:
+                for day in week.get('contributionDays', []):
+                    all_contributions.append(day.get('contributionCount', 0))
+
+            # Reverse to make newest first
+            all_contributions.reverse()
+            for contrib in all_contributions:
+                if contrib > 0:
+                    current_streak += 1
+                else:
+                    break
+        except Exception:
+            current_streak = 0
+
         # Use @me for search queries if this is the authenticated user
         search_username = self._get_search_username(username)
 
@@ -291,6 +311,8 @@ class GitHubFetcher(BaseFetcher):
             'total_repos': len(repos),
             'languages': languages,
             'contribution_graph': contrib_graph,
+            # Include current streak so it gets cached and reused by display
+            'current_streak': current_streak,
             'pull_requests': pull_requests,
             'issues': issues,
         }
