@@ -82,3 +82,47 @@ When you run `gitfetch` for the first time, you'll be prompted to:
 4. **Configure access tokens** (if using Gitea/Forgejo/Codeberg or Sourcehut)
 
 The setup process will provide helpful error messages and installation instructions if anything is missing.
+
+## Uninstall
+
+### Homebrew
+
+```bash
+brew uninstall gitfetch          # Uninstall gitfetch
+brew untap matars/gitfetch       # Remove the tap
+```
+
+### pip
+
+```bash
+pip uninstall gitfetch
+```
+
+### uv
+
+```bash
+uv tool uninstall gitfetch
+```
+
+### pipx
+
+```bash
+pipx uninstall gitfetch
+```
+
+### AUR (Arch Linux)
+
+```bash
+yay -R gitfetch-python
+```
+
+Or with other AUR helpers:
+
+```bash
+paru -R gitfetch-python
+trizen -R gitfetch-python
+```
+
+### NixOS
+
+Remove the gitfetch input from your flake and remove it from `environment.systemPackages`.

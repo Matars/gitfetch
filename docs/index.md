@@ -8,7 +8,7 @@ nav_order: 1
 
 A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics. Display your profile and stats from various git hosting platforms in a beautiful, colorful terminal interface with extensive customization options and intelligent layout adaptation.
 
-![gitfetch screenshot](https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0)
+![gitfetch screenshot](https://github.com/user-attachments/assets/bbb18d5d-4787-4998-a352-e8f4e59642c0){: loading="lazy" width="800" height="520" }
 
 ## Quick Start
 

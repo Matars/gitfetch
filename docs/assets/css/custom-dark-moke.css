@@ -15,7 +15,7 @@
   --jtd-accent: #8ab4f8; /* soft blue accent */
   --jtd-primary-text: #d6d7d9; /* light gray text */
   --jtd-muted-text: #9aa0a6; /* muted text */
-  --jtd-border: rgba(255,255,255,0.06);
+  --jtd-border: rgba(255, 255, 255, 0.06);
 }
 
 body {
@@ -35,12 +35,15 @@ body {
 }
 
 /* Links and accents */
-a, .btn, .site-header a {
+a,
+.btn,
+.site-header a {
   color: var(--jtd-accent);
 }
 
 /* Make code blocks slightly warmer */
-.highlight, pre {
+.highlight,
+pre {
   background: #0b0c0d; /* dark */
   color: #e6e6e6;
 }

@@ -58,15 +58,6 @@ muted = #586069
 
 See the full list in the [colors documentation](colors.md).
 
-## Layout Control
-
-gitfetch automatically adapts to your terminal size, but you can control spacing:
-
-```bash
-gitfetch --spaced     # Enable spaced layout
-gitfetch --not-spaced # Disable spaced layout
-```
-
 ## Custom Dimensions and Coloring Accuracy
 
 The coloring system uses GitHub's standard contribution levels:

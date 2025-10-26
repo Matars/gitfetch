@@ -4,47 +4,59 @@ title: Features
 nav_order: 2
 ---
 
+---
+layout: default
+title: Features
+nav_order: 2
+---
+
 # Features
 
-gitfetch provides a beautiful, neofetch-style display of your git hosting platform statistics with extensive customization options.
+gitfetch brings the magic of neofetch to your git hosting platforms, displaying your coding activity in a stunning, colorful terminal interface that's both beautiful and highly customizable.
 
-## Core Features
+## 🚀 Core Features
 
-- **Neofetch-style display** with ASCII art
-- **Comprehensive statistics** from multiple git hosting platforms
-- **Smart SQLite-based caching** system for faster subsequent runs
-- **Cross-platform support** (macOS and Linux)
-- **First-run initialization** with interactive provider selection
-- **Extensive customization** options for contribution characters, sections, and display elements
+- **Neofetch-style display** with stunning ASCII art that brings your stats to life
+- **Comprehensive statistics** from GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut
+- **Smart SQLite-based caching** system for lightning-fast subsequent runs
+- **Cross-platform support** (macOS and Linux) - works wherever you code
+- **View active pull requests and issues** - stay on top of your contributions
+- **Display commit streak information** - track your coding momentum
+- **Extensive customization** options that let you make it truly yours
 
-## Visual Customization
+## 🎨 Visual Customization
 
-- Customize contribution block characters
-- Hide/show specific sections (achievements, languages, issues, PRs, etc.)
-- Control display dimensions and layout
-- Simulate contribution-graph pixel art from text or predefined shapes
+Transform your gitfetch display with powerful visual options:
 
-## Supported Platforms
+- **Custom contribution characters** - use any symbol or emoji for your graph blocks
+- **Dynamic section control** - hide/show achievements, languages, issues, PRs, and more
+- **Flexible dimensions** - adjust width and height to fit your terminal perfectly
+- **ASCII art simulation** - create pixel art from text or use predefined shapes like kitty, cat, heart, and star
+- **Advanced color customization** with hex codes and predefined color schemes
 
-- **GitHub** - Uses GitHub CLI (gh) for authentication
-- **GitLab** - Uses GitLab CLI (glab) for authentication
-- **Gitea/Forgejo/Codeberg** - Uses personal access tokens
-- **Sourcehut** - Uses personal access tokens
+## 🌐 Supported Platforms
 
-## Advanced Options
+Connect to all major git hosting platforms:
 
-- Repository-specific stats for local git repositories
-- Cache management (bypass, clear)
-- Provider switching
-- Custom graph dimensions
-- Layout control (spaced/not spaced)
+- **GitHub** - Seamless integration with GitHub CLI (gh) authentication
+- **GitLab** - Full support with GitLab CLI (glab) authentication
+- **Gitea/Forgejo/Codeberg** - Personal access token authentication for self-hosted instances
+- **Sourcehut** - OAuth2 personal access token support
 
-## Intelligent Layout System
+## ⚡ Advanced Capabilities
 
-gitfetch automatically adapts to your terminal size:
+- **Repository-specific stats** - analyze local git repositories for detailed contribution graphs
+- **Intelligent cache management** - bypass or clear cache when needed
+- **Provider switching** - easily switch between different git platforms
+- **Custom graph dimensions** - fine-tune your display for any terminal size
+- **Layout control** - choose between spaced and compact layouts
 
-- **Full Layout**: All sections when width ≥ 120 columns
-- **Compact Layout**: Graph and key info side-by-side for medium terminals
-- **Minimal Layout**: Contribution graph only for narrow terminals
+## 🧠 Intelligent Layout System
 
-The system considers both terminal width and height for optimal display.
+gitfetch automatically adapts to your terminal environment:
+
+- **Full Layout**: Complete information display when you have 120+ columns
+- **Compact Layout**: Side-by-side graph and stats for medium terminals
+- **Minimal Layout**: Clean contribution graph for narrow screens
+
+The system intelligently considers both terminal width AND height to deliver the optimal viewing experience, no matter your setup.
