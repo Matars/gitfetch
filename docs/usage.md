@@ -110,6 +110,25 @@ gitfetch --shape kitty heart_shiny
 gitfetch --shape heart kitty
 ```
 
+#### Available Shapes
+
+gitfetch includes the following predefined shapes:
+
+- `kitty` - A cute cat face
+- `oneup` - Classic Super Mario mushroom power-up
+- `oneup2` - Alternative mushroom design
+- `hackerschool` - Hacker School logo
+- `octocat` - GitHub's Octocat mascot
+- `octocat2` - Alternative Octocat design
+- `hello` - "HELLO" text
+- `heart1` - Simple heart shape
+- `heart2` - Alternative heart design
+- `heart` - Standard heart shape
+- `heart_shiny` - Heart with sparkle effect
+- `hireme` - "HIRE ME" text
+- `beer` - Beer mug design
+- `gliders` - Conway's Game of Life glider pattern
+
 ### Graph Dimensions
 
 ```bash
