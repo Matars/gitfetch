@@ -91,20 +91,23 @@ gitfetch --change-provider
 gitfetch --custom-box "██"
 gitfetch --custom-box "■"
 gitfetch --custom-box "●"
+gitfetch --custom-box "★"
+gitfetch --custom-box "◆"
+gitfetch --custom-box "◉"
 ```
 
 ### Predefined Shapes
 
 ```bash
 gitfetch --shape kitty
-gitfetch --shape cat
+gitfetch --shape heart_shiny
 ```
 
 Display multiple shapes with vertical spacing:
 
 ```bash
-gitfetch --shape kitty cat
-gitfetch --shape heart star
+gitfetch --shape kitty heart_shiny
+gitfetch --shape heart kitty
 ```
 
 ### Graph Dimensions
