@@ -6,7 +6,14 @@ baseurl: "/gitfetch"
 
 # Theme
 remote_theme: just-the-docs/just-the-docs
-color_scheme: light
+color_scheme: dark
+
+# Just-the-docs custom tweaks (used by theme when available)
+just_the_docs:
+  # visual flavor hint; not an official key but useful for future tweaks
+  flavor: "dark-moke"
+  # prefer the sidebar visible by default on large screens
+  show_sidebar: true
 
 # Just the Docs settings
 logo: "/assets/images/logo.png" # Optional logo
