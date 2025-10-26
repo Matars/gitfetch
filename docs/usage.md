@@ -1,10 +1,42 @@
 ---
 layout: default
-title: Usage
-nav_order: 4
+title: Features & Usage
+nav_order: 2
 ---
 
-# Usage
+# Features & Usage
+
+gitfetch brings the magic of neofetch to your git hosting platforms, displaying your coding activity in a stunning, colorful terminal interface that's both beautiful and highly customizable.
+
+## 🚀 Core Features
+
+- **Neofetch-style display** with stunning ASCII art that brings your stats to life
+- **Comprehensive statistics** from GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut
+- **Smart SQLite-based caching** system for lightning-fast subsequent runs
+- **Cross-platform support** (macOS and Linux) - works wherever you code
+- **View active pull requests and issues** - stay on top of your contributions
+- **Display commit streak information** - track your coding momentum
+- **Extensive customization** options that let you make it truly yours
+
+## 🎨 Visual Customization
+
+Transform your gitfetch display with powerful visual options:
+
+- **Custom contribution characters** - use any symbol or emoji for your graph blocks
+- **Dynamic section control** - hide/show achievements, languages, issues, PRs, and more
+- **Flexible dimensions** - adjust width and height to fit your terminal perfectly
+- **ASCII art simulation** - create pixel art from text or use predefined shapes like kitty, cat, heart, and star
+- **Advanced color customization** with hex codes and predefined color schemes
+
+## 🧠 Intelligent Layout System
+
+gitfetch automatically adapts to your terminal environment:
+
+- **Full Layout**: Complete information display when you have 120+ columns
+- **Compact Layout**: Side-by-side graph and stats for medium terminals
+- **Minimal Layout**: Clean contribution graph for narrow screens
+
+The system intelligently considers both terminal width AND height to deliver the optimal viewing experience, no matter your setup.
 
 ## Basic Usage
 
@@ -42,20 +74,6 @@ Displays git commit timeline, built from local git history
 - No repository metadata (stars, forks, issues, etc.)
 - No language statistics for the repository
 - Limited to local git history analysis
-
-## Cache Options
-
-Bypass cache and fetch fresh data:
-
-```bash
-gitfetch username --no-cache
-```
-
-Clear cache:
-
-```bash
-gitfetch --clear-cache
-```
 
 ## Configuration
 
@@ -114,6 +132,20 @@ gitfetch --no-grid             # Hide contribution grid
 
 ```bash
 gitfetch --no-date --no-achievements --custom-box "█" --width 60
+```
+
+## Cache Options
+
+Bypass cache and fetch fresh data:
+
+```bash
+gitfetch username --no-cache
+```
+
+Clear cache:
+
+```bash
+gitfetch --clear-cache
 ```
 
 ## Layout Control

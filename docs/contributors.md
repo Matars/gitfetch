@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Contributors & Acknowledgements
-nav_order: 8
+nav_order: 7
 ---
 
 # Contributors & Acknowledgements
