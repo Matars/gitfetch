@@ -52,7 +52,6 @@ pip install git+https://github.com/Matars/gitfetch
 - Cross-platform support (macOS and Linux)
 - Extensive customization options
 
-
 ## Supported Platforms
 
 - **GitHub** - Uses GitHub CLI (gh) for authentication
