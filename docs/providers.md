@@ -1,47 +1,65 @@
-# Git Providers
+---
+layout: default
+title: Supported Providers
+nav_order: 6
+---
 
-gitfetch supports multiple Git hosting providers. Configure your preferred provider in the config file.
+# Supported Providers
 
-## Supported Providers
+gitfetch supports multiple Git hosting platforms with different authentication methods.
 
-### GitHub
+## GitHub
 
-- **provider**: `github`
-- **provider_url**: `https://api.github.com`
-- **Requirements**: GitHub CLI (`gh`) must be installed and authenticated
-- **Authentication**: Run `gh auth login`
+**Authentication**: Uses GitHub CLI (gh)
 
-### GitLab
+**Setup**:
 
-- **provider**: `gitlab`
-- **provider_url**: `https://gitlab.com`
-- **Requirements**: GitLab CLI (`glab`) must be installed and authenticated
-- **Authentication**: Run `glab auth login`
+1. Install GitHub CLI: `brew install gh` (macOS) or follow [official instructions](https://cli.github.com/)
+2. Run `gh auth login` to authenticate
+3. gitfetch will detect and use your GitHub credentials
 
-### Gitea/Forgejo/Codeberg
+## GitLab
 
-- **provider**: `gitea`
-- **provider_url**: Custom URL (e.g., `https://codeberg.org`, `https://gitea.com`)
-- **Requirements**: None (uses API directly)
-- **Authentication**: Set personal access token in environment or use CLI tools
+**Authentication**: Uses GitLab CLI (glab)
 
-### Sourcehut
+**Setup**:
 
-- **provider**: `sourcehut`
-- **provider_url**: `https://git.sr.ht`
-- **Requirements**: None (uses API directly)
-- **Authentication**: Set personal access token in environment
+1. Install GitLab CLI: `brew install glab` (macOS) or follow [official instructions](https://gitlab.com/gitlab-org/cli)
+2. Run `glab auth login` to authenticate
+3. gitfetch will detect and use your GitLab credentials
 
-## Configuration
+## Gitea/Forgejo/Codeberg
 
-Set the provider and URL in your `gitfetch.conf`:
+**Authentication**: Personal access tokens
 
-```ini
-[DEFAULT]
-provider = github
-provider_url = https://api.github.com
+**Setup**:
+
+1. Generate a personal access token in your account settings
+2. During gitfetch setup, select Gitea/Forgejo/Codeberg
+3. Enter your instance URL and personal access token
+
+**Supported Instances**:
+
+- Gitea (any instance)
+- Forgejo (any instance)
+- Codeberg (codeberg.org)
+
+## Sourcehut
+
+**Authentication**: Personal access tokens
+
+**Setup**:
+
+1. Generate an OAuth2 personal access token in your [account settings](https://meta.sr.ht/oauth2)
+2. During gitfetch setup, select Sourcehut
+3. Enter your personal access token
+
+## Provider Configuration
+
+You can change your configured provider at any time:
+
+```bash
+gitfetch --change-provider
 ```
 
-## Adding New Providers
-
-To add support for a new Git provider, implement a new fetcher class in `fetcher.py` and update the provider selection logic in `cli.py`.
+The provider setting is stored in your configuration file at `~/.config/gitfetch/gitfetch.conf`.
