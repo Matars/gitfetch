@@ -46,6 +46,8 @@ pip install git+https://github.com/Matars/gitfetch
 - Comprehensive statistics from multiple git hosting platforms
 - Smart SQLite-based caching system
 - Cross-platform support (macOS and Linux)
+- View active pull requests and issues
+- Display commit streak information
 - Extensive customization options
 
 ## Supported Platforms
@@ -54,6 +56,21 @@ pip install git+https://github.com/Matars/gitfetch
 - **GitLab** - Uses GitLab CLI (glab) for authentication
 - **Gitea/Forgejo/Codeberg** - Uses personal access tokens
 - **Sourcehut** - Uses personal access tokens
+
+## Unisntall
+
+```bash
+brew uninstall gitfetch          # Homebrew
+brew untap matars/gitfetch     # Homebrew tap
+```
+
+```bash
+pip uninstall gitfetch          # pip
+``` 
+
+```bash
+yay -R gitfetch-python          # AUR (yay)
+```
 
 ## License
 

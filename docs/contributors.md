@@ -20,14 +20,15 @@ We'd like to thank all the amazing contributors who have helped make gitfetch be
 
 ## Acknowledgements
 
-gitfetch stands on the shoulders of giants. We're grateful for the inspiration and tools that made this project possible:
-
 ### Design Inspiration
+
 - **Kusa** by Ryu0118 - Beautiful contribution graph design that inspired our visual approach
 - **songfetch** by fwtwoo - The very cool and extremely fun tool that showed us the power of creative terminal displays
 
 ### Technical Inspiration
+
 - **gitfiti** by gelstudios - The `--text` and `--shape` contribution-graph simulation features take inspiration from and adapt ideas from this project. Credit to gelstudios for the concept of painting the contribution calendar (our implementation only simulates the appearance and does not modify git history).
 
 ### Community
+
 A special thanks to the open source community for creating the tools and libraries that power gitfetch, and to all our users for their feedback and support!
