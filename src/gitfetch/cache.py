@@ -255,7 +255,27 @@ class CacheManager:
         Returns:
             True if expired, False otherwise
         """
-        expiry_time = datetime.now() - timedelta(minutes=self.cache_expiry_minutes)
+        # Defensive handling: ensure cache_expiry_minutes is a reasonable int
+        # and avoid passing an extremely large integer to timedelta which can
+        # raise OverflowError on some platforms (assuming on 32-bit builds).
+        try:
+            minutes = int(self.cache_expiry_minutes)
+        except Exception:
+            minutes = 15
+
+        # Enforce sensible bounds: minimum 1 minute, cap to MAX_MINUTES
+        # (10 years expressed in minutes). This prevents OverflowError while
+        # still allowing very long cache durations when intentionally set.
+        MAX_MINUTES = 5256000  # 10 years
+        minutes = max(1, min(minutes, MAX_MINUTES))
+
+        try:
+            expiry_time = datetime.now() - timedelta(minutes=minutes)
+        except OverflowError:
+            # In the unlikely event timedelta still overflows, treat cache as
+            # non-expired (safe default) to avoid crashing the program.
+            return False
+
         return cached_at < expiry_time
 
     def list_cached_accounts(self) -> list[tuple[str, datetime]]:

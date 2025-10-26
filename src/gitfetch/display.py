@@ -951,10 +951,18 @@ class DisplayFormatter:
 
             try:
                 date_obj = datetime.fromisoformat(first_day)
-            except ValueError:
+                # Validate year is in reasonable range to avoid C int overflow
+                if date_obj.year < 1900 or date_obj.year > 9999:
+                    continue
+            except (ValueError, OverflowError):
                 continue
 
-            month_abbr = date_obj.strftime('%b')
+            try:
+                month_abbr = date_obj.strftime('%b')
+            except (ValueError, OverflowError):
+                # strftime can fail with years outside 1900-9999
+                continue
+                
             if month_abbr != last_month:
                 month_chars.append(month_abbr)
                 last_month = month_abbr
@@ -986,8 +994,11 @@ class DisplayFormatter:
 
             try:
                 date_obj = datetime.fromisoformat(first_day)
+                # Validate year is in reasonable range to avoid C int overflow
+                if date_obj.year < 1900 or date_obj.year > 9999:
+                    continue
                 current_month = date_obj.month
-            except ValueError:
+            except (ValueError, OverflowError):
                 continue
 
             # Check if this is a new month
@@ -1003,6 +1014,9 @@ class DisplayFormatter:
                             prev_date_obj = datetime.fromisoformat(
                                 prev_first_day
                             )
+                            # Validate year is in reasonable range
+                            if prev_date_obj.year < 1900 or prev_date_obj.year > 9999:
+                                continue
                             prev_month = prev_date_obj.month
                             if current_month != prev_month:
                                 # New month - add spacing and month name
@@ -1016,7 +1030,7 @@ class DisplayFormatter:
                                 needed_space = max(1, calc)
                                 month_line += " " * needed_space
                                 month_line += month_name
-                        except ValueError:
+                        except (ValueError, OverflowError):
                             pass
 
         return f"    {month_line}"
@@ -1298,8 +1312,11 @@ class DisplayFormatter:
         """
         try:
             dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            # Validate year is in reasonable range to avoid C int overflow
+            if dt.year < 1900 or dt.year > 9999:
+                return date_string
             return dt.strftime('%B %d, %Y')
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, OverflowError):
             return date_string
 
     def _get_contribution_block(self, count: int) -> str:

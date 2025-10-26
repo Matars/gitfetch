@@ -441,7 +441,19 @@ def main() -> int:
             return 0
 
         except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
+            # When debugging, print full traceback to help diagnose issues
+            # (useful when users report errors from package builds / other
+            # environments where the short error message is not enough).
+            try:
+                import os
+                import traceback
+                if os.environ.get('GITFETCH_DEBUG'):
+                    traceback.print_exc()
+                else:
+                    print(f"Error: {e}", file=sys.stderr)
+            except Exception:
+                # Fallback to simple message if traceback printing fails
+                print(f"Error: {e}", file=sys.stderr)
             return 1
 
     except KeyboardInterrupt:
