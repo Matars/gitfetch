@@ -46,11 +46,12 @@ pip install git+https://github.com/Matars/gitfetch
 
 - Neofetch-style display with ASCII art
 - Comprehensive statistics from multiple git hosting platforms
+- Encourages maintaining commit streaks
+- Get PR's and issues quick view in terminal
 - Smart SQLite-based caching system
 - Cross-platform support (macOS and Linux)
-- View active pull requests and issues
-- Display commit streak information
 - Extensive customization options
+
 
 ## Supported Platforms
 
