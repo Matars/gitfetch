@@ -1,6 +1,7 @@
 ---
 layout: default
 title: Home
+nav_order: 1
 ---
 
 # gitfetch
@@ -32,12 +33,4 @@ Get started with gitfetch in minutes:
 - Gitea/Forgejo/Codeberg
 - Sourcehut
 
-## Documentation
-
-- [Installation](installation.html)
-- [Usage](usage.html)
-- [Configuration](configuration.html)
-- [Supported Providers](providers.html)
-- [Development](development.html)
-
-[Get Started](installation.html)
+[Get Started](installation.md){: .btn .btn-primary }
