@@ -4,14 +4,12 @@ description: A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeb
 url: "https://matars.github.io"
 baseurl: "/gitfetch"
 
-# Theme
-remote_theme: just-the-docs/just-the-docs
-color_scheme: light
+# Theme - using GitHub Pages supported theme
+theme: jekyll-theme-primer
 
-# Just the Docs settings
-logo: "/assets/images/logo.png" # Optional logo
-search_enabled: true
-heading_anchors: true
+# Primer theme settings
+show_downloads: true
+github_username: Matars
 
 # Aux links for the upper right navigation
 aux_links:
@@ -20,23 +18,3 @@ aux_links:
 
 # Footer content
 footer_content: 'Copyright &copy; 2025 Matars. Distributed by an <a href="https://github.com/Matars/gitfetch/blob/main/LICENSE">GPL-2.0</a> license.'
-
-# Collections for documentation
-collections:
-  docs:
-    permalink: "/:collection/:name/"
-    output: true
-
-# Default layout
-defaults:
-  - scope:
-      path: ""
-      type: "docs"
-    values:
-      layout: "default"
-
-# Plugins
-plugins:
-  - jekyll-feed
-  - jekyll-sitemap
-  - jekyll-seo-tag
