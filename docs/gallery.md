@@ -55,7 +55,6 @@ nav_order: 9
 }
 
 .hero-section {
-  text-align: center;
   margin: 2rem 0 3rem 0;
   padding: 2rem;
   background: linear-gradient(135deg, var(--jtd-body-bg) 0%, rgba(138, 180, 248, 0.05) 100%);
@@ -78,25 +77,18 @@ nav_order: 9
 .cta-buttons {
   display: flex;
   gap: 1rem;
-  justify-content: center;
   flex-wrap: wrap;
 }
 
 .cta-button {
   display: inline-block;
   padding: 0.75rem 1.5rem;
-  background: var(--jtd-accent);
-  color: var(--jtd-body-bg) !important;
+  background: #22c55e;
+  background-color: #333;
+  color: white !important;
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.cta-button:hover {
-  background: #9bb5f9;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(138, 180, 248, 0.3);
 }
 
 .contribute-section {
@@ -121,9 +113,12 @@ nav_order: 9
     font-size: 2rem;
   }
 
+  .hero-section p {
+    font-size: 1rem;
+  }
+
   .cta-buttons {
     flex-direction: column;
-    align-items: center;
   }
 }
 </style>

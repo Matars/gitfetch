@@ -36,27 +36,24 @@ nav_order: 1
 .cta-button {
   display: inline-block;
   padding: 0.75rem 1.5rem;
-  background: var(--jtd-accent);
-  color: var(--jtd-body-bg) !important;
+  background: #22c55e;
+  background-color: #333;
+  color: white !important;
   text-decoration: none;
   border-radius: 4px;
   font-weight: 500;
-  transition: opacity 0.2s ease;
-}
-
-.cta-button:hover {
-  opacity: 0.9;
 }
 
 .cta-button.secondary {
-  background: transparent;
-  border: 1px solid var(--jtd-accent);
-  color: var(--jtd-accent) !important;
+  background: #16a34a;
+  background-color: #333;
+  color: white !important;
+  border: none;
 }
 
 .cta-button.secondary:hover {
-  background: var(--jtd-accent);
-  color: var(--jtd-body-bg) !important;
+  background: #15803d;
+  color: white !important;
 }
 
 @media (max-width: 768px) {
