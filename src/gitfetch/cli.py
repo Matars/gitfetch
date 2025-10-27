@@ -111,51 +111,9 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     visual_group.add_argument(
-        "--no-date",
-        action="store_true",
-        help="Hide month/date labels on contribution graph"
-    )
-
-    visual_group.add_argument(
         "--graph-only",
         action="store_true",
         help="Show only the contribution graph"
-    )
-
-    visual_group.add_argument(
-        "--no-achievements",
-        action="store_true",
-        help="Hide achievements section"
-    )
-
-    visual_group.add_argument(
-        "--no-languages",
-        action="store_true",
-        help="Hide languages section"
-    )
-
-    visual_group.add_argument(
-        "--no-issues",
-        action="store_true",
-        help="Hide issues section"
-    )
-
-    visual_group.add_argument(
-        "--no-pr",
-        action="store_true",
-        help="Hide pull requests section"
-    )
-
-    visual_group.add_argument(
-        "--no-account",
-        action="store_true",
-        help="Hide account information section"
-    )
-
-    visual_group.add_argument(
-        "--no-grid",
-        action="store_true",
-        help="Hide contribution grid/graph"
     )
 
     visual_group.add_argument(
@@ -171,9 +129,66 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     )
 
     visual_group.add_argument(
+        "--text",
+        type=str,
+        help="Display text as contribution graph pattern (simulation only)"
+    )
+
+    visual_group.add_argument(
+        "--shape",
+        nargs='+',
+        help=("Display one or more predefined shapes as contribution graph "
+              "(simulation only). Provide multiple shapes after the option: "
+              "--shape kitty kitty")
+    )
+
+    visual_group.add_argument(
         "--graph-timeline",
         action="store_true",
         help="Show git timeline graph instead of contribution graph"
+    )
+
+    visibility_group = parser.add_argument_group('\033[95mVisibility\033[0m')
+    visibility_group.add_argument(
+        "--no-date",
+        action="store_true",
+        help="Hide month/date labels on contribution graph"
+    )
+
+    visibility_group.add_argument(
+        "--no-achievements",
+        action="store_true",
+        help="Hide achievements section"
+    )
+
+    visibility_group.add_argument(
+        "--no-languages",
+        action="store_true",
+        help="Hide languages section"
+    )
+
+    visibility_group.add_argument(
+        "--no-issues",
+        action="store_true",
+        help="Hide issues section"
+    )
+
+    visibility_group.add_argument(
+        "--no-pr",
+        action="store_true",
+        help="Hide pull requests section"
+    )
+
+    visibility_group.add_argument(
+        "--no-account",
+        action="store_true",
+        help="Hide account information section"
+    )
+
+    visibility_group.add_argument(
+        "--no-grid",
+        action="store_true",
+        help="Hide contribution grid/graph"
     )
 
     return parser.parse_args()
@@ -214,10 +229,13 @@ def main() -> int:
                 if resp.status_code == 200:
                     latest = resp.json()["tag_name"].lstrip("v")
                     if latest != __version__:
-                        print(
-                            f"\033[93mUpdate available: {latest}\n"
-                            "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                            "Or run: brew update && brew upgrade gitfetch\033[0m")
+                        print(f"\033[93mUpdate available: {latest}\n"
+                              + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                              + "Or update using your package manager:\n"
+                              + "\t\tbrew update && brew upgrade gitfetch\n"
+                              + "\t\tpip install --upgrade gitfetch\n"
+                              + "\t\tpacman -Syu gitfetch-python\n"
+                              + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
                     else:
                         print("You are using the latest version.")
                 else:
@@ -251,18 +269,98 @@ def main() -> int:
         # Handle show date setting
         show_date = not args.no_date
 
-        formatter = DisplayFormatter(config_manager, custom_box, show_date,
-                                     args.graph_only, not args.no_achievements,
-                                     not args.no_languages, not args.no_issues,
-                                     not args.no_pr, not args.no_account,
-                                     not args.no_grid, args.width, args.height,
-                                     args.graph_timeline, args.local)
+        formatter = DisplayFormatter(
+            config_manager,
+            custom_box,
+            show_date,
+            args.graph_only,
+            not args.no_achievements,
+            not args.no_languages,
+            not args.no_issues,
+            not args.no_pr,
+            not args.no_account,
+            not args.no_grid,
+            args.width,
+            args.height,
+            args.graph_timeline,
+            args.local,
+            args.shape,
+            args.text,
+        )
         if args.spaced:
             spaced = True
         elif args.not_spaced:
             spaced = False
         else:
             spaced = True
+
+        # If --text or --shape provided, simulate contribution graph
+        # and reuse cached metadata (issues, PRs, languages, achievements)
+        if args.text or args.shape:
+            if args.text and args.shape:
+                print("Error: --text and --shape cannot be used together",
+                      file=sys.stderr)
+                return 1
+
+            try:
+                if args.text:
+                    # Build a fake contribution_graph from the text
+                    text_grid = formatter._text_to_grid(args.text)
+                    weeks = formatter._generate_weeks_from_text_grid(text_grid)
+                else:  # args.shape
+                    # Use the predefined shape pattern (shape may be a list)
+                    shape_grid = formatter._shape_to_grid(args.shape)
+                    weeks = formatter._generate_weeks_from_text_grid(
+                        shape_grid)
+            except Exception as e:
+                print(f"Error generating graph: {e}", file=sys.stderr)
+                return 1
+
+            # Try to reuse cached user metadata/stats when available
+            lookup_username = args.username or config_manager.get_default_username()
+            cached_user = None
+            cached_stats = None
+            if lookup_username:
+                # Prefer fresh cache, but fall back to stale cache so
+                # simulated graphs can still show metadata like streaks
+                cached_user = (
+                    cache_manager.get_cached_user_data(lookup_username)
+                    or cache_manager.get_stale_cached_user_data(lookup_username)
+                )
+                cached_stats = (
+                    cache_manager.get_cached_stats(lookup_username)
+                    or cache_manager.get_stale_cached_stats(lookup_username)
+                )
+
+            if cached_stats:
+                # Replace only the contribution graph with our simulated weeks
+                cached_stats['contribution_graph'] = weeks
+                stats = cached_stats
+            else:
+                stats = {'contribution_graph': weeks}
+
+            if cached_user:
+                user_data = cached_user
+                display_name = cached_user.get('name') or lookup_username
+            else:
+                # Minimal fallback user_data for display purposes
+                display_name = (
+                    args.username
+                    or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
+                )
+                user_data = {
+                    'name': display_name,
+                    'bio': '',
+                    'website': '',
+                }
+
+            formatter.display(
+                display_name,
+                user_data,
+                stats,
+                spaced=spaced,
+            )
+            return 0
 
         # Handle cache clearing
         if args.clear_cache:
@@ -315,7 +413,7 @@ def main() -> int:
                                       stale_stats, spaced=spaced)
 
                     # Spawn a completely independent background process
-                    # Use the same Python interpreter and call gitfetch with hidden flag
+                    # Spawn background refresh process
                     try:
                         subprocess.Popen(
                             [sys.executable, "-m", "gitfetch.cli",
@@ -323,7 +421,7 @@ def main() -> int:
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             stdin=subprocess.DEVNULL,
-                            start_new_session=True  # Detach from parent process
+                            start_new_session=True,  # detach from parent
                         )
                     except Exception:
                         # If subprocess fails, silently continue
@@ -343,7 +441,19 @@ def main() -> int:
             return 0
 
         except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
+            # When debugging, print full traceback to help diagnose issues
+            # (useful when users report errors from package builds / other
+            # environments where the short error message is not enough).
+            try:
+                import os
+                import traceback
+                if os.environ.get('GITFETCH_DEBUG'):
+                    traceback.print_exc()
+                else:
+                    print(f"Error: {e}", file=sys.stderr)
+            except Exception:
+                # Fallback to simple message if traceback printing fails
+                print(f"Error: {e}", file=sys.stderr)
             return 1
 
     except KeyboardInterrupt:

@@ -1,0 +1,59 @@
+/* Custom "dark-moke" tweaks for just-the-docs
+   This file contains a few conservative overrides to nudge the
+   theme toward a darker, slightly desaturated "moke" look.
+
+   Note: The theme will only use this automatically if the layout
+   includes or links to custom CSS. If you want me to inject this
+   into the site's <head> automatically, tell me and I'll add a
+   small include that links it.
+*/
+
+:root {
+  /* slightly desaturated dark background */
+  --jtd-body-bg: #0f1113; /* near-black */
+  --jtd-page-bg: #0f1113;
+  --jtd-accent: #8ab4f8; /* soft blue accent */
+  --jtd-primary-text: #d6d7d9; /* light gray text */
+  --jtd-muted-text: #9aa0a6; /* muted text */
+  --jtd-border: rgba(255, 255, 255, 0.06);
+}
+
+body {
+  background-color: var(--jtd-body-bg) !important;
+  color: var(--jtd-primary-text) !important;
+}
+
+/* Sidebar tweaks */
+.jtd-sidebar {
+  background-color: #0b0c0d; /* slightly darker */
+  border-right: 1px solid var(--jtd-border);
+}
+
+.jtd-sidebar a,
+.jtd-sidebar a:visited {
+  color: var(--jtd-primary-text);
+}
+
+/* Links and accents */
+a,
+.btn,
+.site-header a {
+  color: var(--jtd-accent);
+}
+
+/* Make code blocks slightly warmer */
+.highlight,
+pre {
+  background: #0b0c0d; /* dark */
+  color: #e6e6e6;
+}
+
+/* Make the sidebar more persistent visualy (desktop) */
+@media (min-width: 900px) {
+  .jtd-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: auto;
+  }
+}

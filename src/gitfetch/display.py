@@ -9,7 +9,27 @@ import re
 import unicodedata
 from datetime import datetime
 from .config import ConfigManager
+from .text_patterns import CHAR_PATTERNS
 import subprocess
+
+
+def hex_to_ansi(hex_color: str, background: bool = False) -> str:
+    """Convert hex color to ANSI escape code."""
+    if not hex_color.startswith('#'):
+        return hex_color  # Already ANSI or invalid
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
+        return hex_color
+    try:
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        if background:
+            return f'\033[48;2;{r};{g};{b}m'
+        else:
+            return f'\033[38;2;{r};{g};{b}m'
+    except ValueError:
+        return hex_color
 
 
 class DisplayFormatter:
@@ -28,7 +48,10 @@ class DisplayFormatter:
                  custom_width: Optional[int] = None,
                  custom_height: Optional[int] = None,
                  graph_timeline: bool = False,
-                 local_mode: bool = False):
+                 local_mode: bool = False,
+                 shape: Optional[list] = None,
+                 text: Optional[str] = None,
+                 text_patterns: Optional[dict] = None):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -37,6 +60,7 @@ class DisplayFormatter:
         self.available_height = max(10, self.terminal_height - 2)
         self.enable_color = sys.stdout.isatty()
         self.colors = config_manager.get_ansi_colors()
+        self.hex_colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
         self.show_date = (show_date if show_date is not None
                           else config_manager.get_show_date())
@@ -51,6 +75,16 @@ class DisplayFormatter:
         self.custom_height = custom_height
         self.graph_timeline = graph_timeline
         self.local_mode = local_mode
+        self.text = text
+        # Allow overriding or extending the built-in character patterns.
+        # If not provided, fall back to bundled CHAR_PATTERNS.
+        self.text_patterns = text_patterns or CHAR_PATTERNS
+
+        # Store shape (may be None or list/str). If simulating text or
+        # shape, always suppress month/date line because month labels don't
+        # align with simulated grids.
+        self.shape = shape
+        self.suppress_month_line = bool(self.text) or bool(self.shape)
 
     def display(self, username: str, user_data: Dict[str, Any],
                 stats: Dict[str, Any], spaced=True) -> None:
@@ -492,6 +526,13 @@ class DisplayFormatter:
         Returns:
             List of strings representing graph lines
         """
+        if self.text:
+            # Generate fake weeks_data from text
+            text_grid = self._text_to_grid(self.text)
+            if not text_grid:
+                return ["No text to display"]
+            weeks_data = self._generate_weeks_from_text_grid(text_grid)
+
         if self.local_mode:
             try:
                 weeks_data = self._get_local_contribution_weeks()
@@ -538,10 +579,12 @@ class DisplayFormatter:
 
         lines = [*header_lines]
 
-        if self.show_date:
+        if self.suppress_month_line or not self.show_date:
+            month_line = None
+        else:
             month_line = self._build_month_line_spaced(display_weeks)
-            if month_line.strip():
-                lines.append(month_line)
+        if month_line and month_line.strip():
+            lines.append(month_line)
 
         # Add grid rows (no vertical spacing between rows)
         for row_idx, row in enumerate(day_rows):
@@ -908,10 +951,18 @@ class DisplayFormatter:
 
             try:
                 date_obj = datetime.fromisoformat(first_day)
-            except ValueError:
+                # Validate year is in reasonable range to avoid C int overflow
+                if date_obj.year < 1900 or date_obj.year > 9999:
+                    continue
+            except (ValueError, OverflowError):
                 continue
 
-            month_abbr = date_obj.strftime('%b')
+            try:
+                month_abbr = date_obj.strftime('%b')
+            except (ValueError, OverflowError):
+                # strftime can fail with years outside 1900-9999
+                continue
+                
             if month_abbr != last_month:
                 month_chars.append(month_abbr)
                 last_month = month_abbr
@@ -943,8 +994,11 @@ class DisplayFormatter:
 
             try:
                 date_obj = datetime.fromisoformat(first_day)
+                # Validate year is in reasonable range to avoid C int overflow
+                if date_obj.year < 1900 or date_obj.year > 9999:
+                    continue
                 current_month = date_obj.month
-            except ValueError:
+            except (ValueError, OverflowError):
                 continue
 
             # Check if this is a new month
@@ -960,6 +1014,9 @@ class DisplayFormatter:
                             prev_date_obj = datetime.fromisoformat(
                                 prev_first_day
                             )
+                            # Validate year is in reasonable range
+                            if prev_date_obj.year < 1900 or prev_date_obj.year > 9999:
+                                continue
                             prev_month = prev_date_obj.month
                             if current_month != prev_month:
                                 # New month - add spacing and month name
@@ -973,7 +1030,7 @@ class DisplayFormatter:
                                 needed_space = max(1, calc)
                                 month_line += " " * needed_space
                                 month_line += month_name
-                        except ValueError:
+                        except (ValueError, OverflowError):
                             pass
 
         return f"    {month_line}"
@@ -990,23 +1047,18 @@ class DisplayFormatter:
 
     def _build_legend_spaced(self) -> str:
         """Build legend with GitHub's actual color palette (Kusa style)."""
-        # Color palette matching GitHub
-        colors = [
-            (0, '\033[38;2;235;237;240m'),      # #ebedf0 - Less
-            (1, '\033[38;2;155;233;168m'),      # #9be9a8
-            (4, '\033[38;2;64;196;99m'),        # #40c463
-            (8, '\033[38;2;48;161;78m'),        # #30a14e
-            (16, '\033[38;2;33;110;57m'),       # #216e39 - More
-        ]
-
+        # Build legend using configured hex colors for levels 0-4
+        levels = ['0', '1', '2', '3', '4']
         reset = '\033[0m'
 
         if not self.enable_color:
-            blocks = ' '.join(['■'] * 5)
+            blocks = ' '.join(['■'] * len(levels))
             return f"    Less {blocks} More"
 
         blocks_str = ""
-        for count, color in colors:
+        for lvl in levels:
+            hex_col = self.hex_colors.get(lvl, '#000000')
+            color = hex_to_ansi(hex_col, background=False)
             blocks_str += f"{color}■{reset} "
 
         return f"    Less {blocks_str}More"
@@ -1260,29 +1312,39 @@ class DisplayFormatter:
         """
         try:
             dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            # Validate year is in reasonable range to avoid C int overflow
+            if dt.year < 1900 or dt.year > 9999:
+                return date_string
             return dt.strftime('%B %d, %Y')
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, OverflowError):
             return date_string
 
     def _get_contribution_block(self, count: int) -> str:
-        """Return a fixed-width block representing contribution intensity."""
+        """Return compact block (visual: no light gap between weeks).
+
+        """
         if not self.enable_color:
-            # Use custom character for all intensities when no color
-            return f'{self.custom_box} '
+            # When colors are disabled fall back to the original box+space
+            # so output remains readable and aligned.
+            return f"{self.custom_box} "
 
         reset = '\033[0m'
+        # Map contribution count to configurable color levels
         if count == 0:
-            color = self.colors['0']
+            level = '0'
         elif count < 3:
-            color = self.colors['1']
+            level = '1'
         elif count < 7:
-            color = self.colors['2']
+            level = '2'
         elif count < 13:
-            color = self.colors['3']
+            level = '3'
         else:
-            color = self.colors['4']
+            level = '4'
+        bg = hex_to_ansi(self.hex_colors[level], background=True)
 
-        return f"{color}{self.custom_box}{reset} "
+        # Two background-coloured spaces produce a filled square that
+        # visually joins with adjacent squares.
+        return f"{bg}  {reset}"
 
     def _get_contribution_block_spaced(self, count: int) -> str:
         """
@@ -1294,25 +1356,131 @@ class DisplayFormatter:
             return f'{self.custom_box} '
 
         reset = '\033[0m'
-        # Map contributions to GitHub's color palette
+        # Map contributions to configurable color levels
         if count == 0:
-            # #ebedf0 - very light gray
-            color = '\033[38;2;235;237;240m'
+            level = '0'
         elif count < 3:
-            # #9be9a8 - light green
-            color = '\033[38;2;155;233;168m'
+            level = '1'
         elif count < 7:
-            # #40c463 - medium green
-            color = '\033[38;2;64;196;99m'
+            level = '2'
         elif count < 13:
-            # #30a14e - darker green
-            color = '\033[38;2;48;161;78m'
+            level = '3'
         else:
-            # #216e39 - darkest green
-            color = '\033[38;2;33;110;57m'
+            level = '4'
+        color = hex_to_ansi(self.hex_colors[level], background=False)
 
         # Use custom box character + space = 2 chars wide
         return f"{color}{self.custom_box}{reset} "
+
+    def _text_to_grid(self, text: str) -> list:
+        """Convert text to a 7xN grid of contribution levels (0-4)."""
+        if not text:
+            return []
+
+        patterns = self.text_patterns or CHAR_PATTERNS
+
+        # Only allow A-Z and space for text mode
+        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ ')
+
+        grid = []
+        for char in text.upper():
+            if char not in allowed_chars:
+                raise ValueError(
+                    f"Text mode only supports A-Z and space. "
+                    f"Use --shape for predefined shapes. Got: '{char}'"
+                )
+
+            pattern = patterns.get(char, patterns.get(' ', []))
+            if not grid:
+                # Make a shallow copy of each row to avoid mutating source
+                grid = [row[:] for row in pattern]
+            else:
+                for i in range(7):
+                    grid[i].extend(pattern[i])
+            # Always add one-column spacer after each character
+            for i in range(7):
+                grid[i].append(0)
+
+        return grid
+
+    def _generate_weeks_from_text_grid(self, text_grid: list) -> list:
+        """Generate fake weeks_data from text grid for simulation."""
+        if not text_grid or not text_grid[0]:
+            return []
+
+        # text_grid is 7 rows x N columns
+        num_columns = len(text_grid[0])
+        weeks = []
+
+        # Each column in the text grid represents one week (7 days).
+        for col_idx in range(num_columns):
+            week_days = []
+            for row_idx in range(7):
+                # row_idx 0 -> Sunday, row_idx 6 -> Saturday
+                intensity = text_grid[row_idx][col_idx]
+                # Use intensity directly (0-4 matches color mapping)
+                count = intensity
+                # Use a fake date that increments per column for readability
+                week_days.append({
+                    'contributionCount': count,
+                    'date': f'2023-01-{col_idx + 1:02d}'
+                })
+            weeks.append({
+                'contributionDays': week_days
+            })
+
+        return weeks
+
+    def _shape_to_grid(self, shape_names) -> list:
+        """Convert one or more shape names to a 7xN grid of contribution
+        levels (0-4).
+
+        Accepts either a single shape name (str) or an iterable/list of
+        shape names. When multiple shapes are provided, they are concatenated
+        horizontally with a single-column spacer (vertical line of empty
+        cells) between each shape.
+        """
+        if not shape_names:
+            return []
+
+        patterns = self.text_patterns or CHAR_PATTERNS
+
+        # Normalize to list
+        if isinstance(shape_names, str):
+            shape_list = [shape_names]
+        else:
+            shape_list = list(shape_names)
+
+        # Resolve each shape into a 7xN grid
+        resolved = []
+        for name in shape_list:
+            key = name.lower()
+            if key not in patterns:
+                available_shapes = [
+                    k for k in patterns.keys()
+                    if k not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ '
+                ]
+                raise ValueError(
+                    f"Shape '{name}' not found. Available shapes: "
+                    f"{', '.join(available_shapes)}"
+                )
+            resolved.append([row[:] for row in patterns[key]])
+
+        # If only one shape, return it directly
+        if len(resolved) == 1:
+            return resolved[0]
+
+        # Concatenate horizontally with a one-column spacer between shapes
+        combined = [row[:] for row in resolved[0]]
+        for shape_grid in resolved[1:]:
+            # Add one-column spacer
+            for i in range(7):
+                combined[i].append(0)
+            # Append the next shape columns
+            for i in range(7):
+                combined[i].extend(shape_grid[i])
+
+        return combined
 
     def _strip_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text."""

@@ -1,0 +1,49 @@
+# Site settings
+title: gitfetch
+description: A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics
+url: "https://matars.github.io"
+baseurl: "/gitfetch"
+
+# Theme
+remote_theme: just-the-docs/just-the-docs
+color_scheme: dark
+
+# Just-the-docs custom tweaks (used by theme when available)
+just_the_docs:
+  # visual flavor hint; not an official key but useful for future tweaks
+  flavor: "dark-moke"
+  # prefer the sidebar visible by default on large screens
+  show_sidebar: true
+
+# Just the Docs settings
+logo: "/assets/images/logo.png" # Optional logo
+search_enabled: true
+heading_anchors: true
+
+# Aux links for the upper right navigation
+aux_links:
+  "GitHub":
+    - "//github.com/Matars/gitfetch"
+
+# Footer content
+footer_content: 'Copyright &copy; 2025 Matars. Distributed by an <a href="https://github.com/Matars/gitfetch/blob/main/LICENSE">GPL-2.0</a> license.'
+
+# Collections for documentation
+collections:
+  docs:
+    permalink: "/:collection/:name/"
+    output: true
+
+# Default layout
+defaults:
+  - scope:
+      path: ""
+      type: "docs"
+    values:
+      layout: "default"
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag

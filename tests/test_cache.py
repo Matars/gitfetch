@@ -93,3 +93,6 @@ class TestCacheManager:
 
         # Timestamps should be different
         assert updated_timestamp > initial_timestamp
+
+        # Remove test user cache
+        self.cache_manager._remove_user_cache(username)

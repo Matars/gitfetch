@@ -15,7 +15,7 @@
 
         myPackage = pythonPackages.buildPythonPackage {
           pname = "gitfetch";
-          version = "1.2.6";
+          version = "1.3.2";
           src = ./.;
           
           # Main dependencies

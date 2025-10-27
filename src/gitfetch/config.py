@@ -40,11 +40,12 @@ class ConfigManager:
             'accent': '#FFFFFF',
             'header': '#76D7A1',
             'muted': '#44475A',
-            '0': '#282A36',
-            '1': '#44475A',
-            '2': '#6272A4',
-            '3': '#50FA7B',
-            '4': '#F1FA8C'
+            # Contribution intensity levels (GitHub-like defaults)
+            '0': '#ebedf0',  # no contributions / very light gray
+            '1': '#9be9a8',  # light
+            '2': '#40c463',  # medium
+            '3': '#30a14e',  # darker
+            '4': '#216e39'   # darkest
         }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
