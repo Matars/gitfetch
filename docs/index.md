@@ -51,11 +51,6 @@ nav_order: 1
   border: none;
 }
 
-.cta-button.secondary:hover {
-  background: #15803d;
-  color: white !important;
-}
-
 @media (max-width: 768px) {
   .hero-section h1 {
     font-size: 2rem;
