@@ -495,14 +495,14 @@ def _prompt_provider() -> Optional[str]:
                 print(f"{indicator} {name}")
 
             print()
-            print("Use ↑/↓ arrows, ● = selected, Enter to confirm")
+            print("Use ↑/↓ or j/k to navigate, Enter to confirm")
 
             # Read key
             key = readchar.readkey()
 
-            if key == readchar.key.UP:
+            if key == readchar.key.UP or key == 'k':
                 selected = (selected - 1) % len(providers)
-            elif key == readchar.key.DOWN:
+            elif key == readchar.key.DOWN or key == 'j':
                 selected = (selected + 1) % len(providers)
             elif key == readchar.key.ENTER:
                 print()  # New line after selection
