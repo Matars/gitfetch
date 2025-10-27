@@ -171,5 +171,4 @@ nav_order: 9
     <li><strong>Create an issue</strong> - Open a GitHub issue with your screenshot and configuration details</li>
     <li><strong>Get featured</strong> - Your setup might be added to our gallery!</li>
   </ol>
-  <p><a href="/gitfetch/contributing.html" class="cta-button">Learn More About Contributing</a></p>
 </div>
