@@ -1,9 +1,3 @@
----
-layout: default
-title: How to Contribute
-nav_order: 8
----
-
 # Contributing to gitfetch
 
 We welcome contributions from everyone! This document provides guidelines and information for contributors.
