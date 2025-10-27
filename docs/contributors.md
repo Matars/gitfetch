@@ -10,12 +10,12 @@ nav_order: 7
 
 We'd like to thank all the amazing contributors who have helped make gitfetch better:
 
-- **[@ilonic23](https://github.com/ilonic23)**: Added nix packaging
+- **[@Fwtwoo](https://github.com/Fwtwoo)**: Better boot menu flow, Docs update
+- **[@ilonic23](https://github.com/ilonic23)**: Added nix packaging support & Documentation
 - **[@quunarc](https://github.com/quunarc)**: Small code refactoring
-- **[@Zeviraty](https://github.com/Zeviraty)**: Small fixes, color configuration
+- **[@Zeviraty](https://github.com/Zeviraty)**: Small fixes, color configuration, `--graph-timeline` implementation.
 - **[@Vaishnav-Sabari-Girish](https://github.com/Vaishnav-Sabari-Girish)**: Better installation instructions
 - **[@Noirbizzarre](https://github.com/Noirbizzarre)**: Added installation instructions using uv and pipx
-- **[@Fwtwoo](https://github.com/Fwtwoo)**: README update
 - **[@Joeliscoding](https://github.com/Joeliscoding)**: Added homebrew formula and fixed README
 
 ## Acknowledgements
