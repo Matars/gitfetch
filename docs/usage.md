@@ -8,7 +8,7 @@ nav_order: 2
 
 gitfetch brings the magic of neofetch to your git hosting platforms, displaying your coding activity in a stunning, colorful terminal interface that's both beautiful and highly customizable.
 
-## 🚀 Core Features
+## Core Features
 
 - **Neofetch-style display** with stunning ASCII art that brings your stats to life
 - **Comprehensive statistics** from GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut
@@ -18,7 +18,7 @@ gitfetch brings the magic of neofetch to your git hosting platforms, displaying 
 - **Display commit streak information** - track your coding momentum
 - **Extensive customization** options that let you make it truly yours
 
-## 🎨 Visual Customization
+## Visual Customization
 
 Transform your gitfetch display with powerful visual options:
 
@@ -91,7 +91,7 @@ gitfetch --change-provider
 gitfetch --custom-box "██"
 gitfetch --custom-box "■"
 gitfetch --custom-box "●"
-gitfetch --custom-box "★"
+gitfetch --custom-box "*"
 gitfetch --custom-box "◆"
 gitfetch --custom-box "◉"
 ```
