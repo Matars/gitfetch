@@ -38,16 +38,56 @@ makepkg -si
 
 ## NixOS (Flake only)
 
-Add input to the flake:
+### Installation:
 
+To install, you should add an input to your flake:
 ```nix
-gitfetch.url = "github:Matars/gitfetch"
+gitfetch.url = "github:Matars/gitfetch";
 ```
 
-And in `environment.systemPackages` add:
-
+Minimal flake variant for it to work:
 ```nix
-inputs.gitfetch.packages.${system}.default
+{
+  description = "My awesome flake";
+
+	inputs = {
+	  nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05"; # or your version
+	  gitfetch.url = "github:Matars/gitfetch";
+	};
+  outputs = inputs@{ self, nixpkgs, gitfetch }:
+  	let
+  		system = "x86_64-linux";
+  		pkgs = import nixpkgs { 
+  		  inherit system; 
+  		};
+  	in {
+  	  nixosConfigurations = {
+  	  	nixos = nixpkgs.lib.nixosSystem {
+  	  	  specialArgs = { inherit system; inherit inputs; };
+		  modules = [
+		    ./configuration.nix
+		  ];
+  	  	};
+  	  };
+  	};
+}
+```
+
+Then in ``environment.systemPackages`` add this:
+```nix
+environment.systemPackages = with pkgs; [
+	# ...
+	inputs.gitfetch.packages.${system}.default # your actual input name
+	gh # don't forget to install it and authenticate
+]
+```
+
+### Updating
+
+To update, run these commands and then rebuild
+```shell
+nix flake update gitfetch # gitfetch should be replaced by your input name in the flake
+nixos-rebuild switch
 ```
 
 ## From Source
