@@ -11,7 +11,7 @@ from datetime import datetime
 from .config import ConfigManager
 from .text_patterns import CHAR_PATTERNS
 import subprocess
-
+import webcolors
 
 def hex_to_ansi(hex_color: str, background: bool = False) -> str:
     """Convert hex color to ANSI escape code."""
@@ -1294,6 +1294,8 @@ class DisplayFormatter:
 
         color_code = colors.get(color.lower())
         reset = colors['reset']
+        if not color_code and color_code in webcolors.names():
+            color_code = hex_to_ansi(webcolors.name_to_hex(color_code))
 
         if not self.enable_color or not color_code:
             return text

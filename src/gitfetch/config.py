@@ -5,7 +5,7 @@ Configuration manager for gitfetch
 import configparser
 from pathlib import Path
 from typing import Optional
-
+import webcolors
 
 class ConfigManager:
     """Manages gitfetch configuration."""
@@ -100,7 +100,13 @@ class ConfigManager:
         Returns:
             dict: color name to hex code
         """
-        return dict(self.config._sections["COLORS"])
+        parsed = {}
+        for k,v in self.config._sections["COLORS"].items():
+            if not v.startswith("#") and v in webcolors.names():
+                parsed[k] = webcolors.name_to_hex(v)
+            else:
+                parsed[k] = v
+        return parsed
 
     def get_ansi_colors(self) -> dict:
         """
