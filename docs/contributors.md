@@ -12,7 +12,6 @@ We'd like to thank all the amazing contributors who have helped make gitfetch be
 
 
 
-- **[@Elmonade](https://github.com/Elmonade)**: Improved Docs, cracked dev.
 - **[@shankar524](https://github.com/shankar524)**: Add CI pipeline for testing
 - **[@fwtwoo](https://github.com/fwtwoo)**: Better boot menu flow, Docs update, makes good music!
 - **[@ilonic23](https://github.com/ilonic23)**: Added nix packaging support & Documentation
