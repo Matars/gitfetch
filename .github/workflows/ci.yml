@@ -41,7 +41,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest -q
+            python -m pytest tests/ -v
         env:
           # reduce noisy deprecation warnings in CI logs
           PYTHONWARNINGS: ignore::DeprecationWarning
