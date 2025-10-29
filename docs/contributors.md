@@ -11,8 +11,10 @@ nav_order: 7
 We'd like to thank all the amazing contributors who have helped make gitfetch better:
 
 
+
+- **[@Elmonade](https://github.com/Elmonade)**: Improved Docs, cracked dev.
 - **[@shankar524](https://github.com/shankar524)**: Add CI pipeline for testing
-- **[@Fwtwoo](https://github.com/Fwtwoo)**: Better boot menu flow, Docs update
+- **[@fwtwoo](https://github.com/fwtwoo)**: Better boot menu flow, Docs update, makes good music!
 - **[@ilonic23](https://github.com/ilonic23)**: Added nix packaging support & Documentation
 - **[@quunarc](https://github.com/quunarc)**: Small code refactoring
 - **[@Zeviraty](https://github.com/Zeviraty)**: Small fixes, color configuration, `--graph-timeline` implementation.
