@@ -10,6 +10,8 @@ nav_order: 7
 
 We'd like to thank all the amazing contributors who have helped make gitfetch better:
 
+
+- **[@shankar524](https://github.com/shankar524)**: Add CI pipeline for testing
 - **[@Fwtwoo](https://github.com/Fwtwoo)**: Better boot menu flow, Docs update
 - **[@ilonic23](https://github.com/ilonic23)**: Added nix packaging support & Documentation
 - **[@quunarc](https://github.com/quunarc)**: Small code refactoring
