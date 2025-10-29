@@ -38,10 +38,14 @@ brew install gitfetch
 yay -S gitfetch-python
 ```
 
-### From Source
+### From Source with pip
+
+Make sure you have pip installed, then run:
 
 ```bash
-pip install git+https://github.com/Matars/gitfetch
+git clone https://github.com/Matars/gitfetch.git
+cd gitfetch
+make dev
 ```
 
 ## Features
