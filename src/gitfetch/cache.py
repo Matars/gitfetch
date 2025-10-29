@@ -12,17 +12,20 @@ import json
 class CacheManager:
     """Manages local caching of GitHub data using SQLite."""
 
-    CACHE_DIR = Path.home() / ".local" / "share" / "gitfetch"
-    DB_FILE = CACHE_DIR / "cache.db"
-
-    def __init__(self, cache_expiry_minutes: int = 15):
+    def __init__(self, cache_expiry_minutes: int = 15,
+                 cache_dir: Optional[Path] = None):
         """
         Initialize the cache manager.
 
         Args:
             cache_expiry_minutes: Minutes before cache expires (default: 15)
+            cache_dir: Directory to store cache files
+                (default: ~/.local/share/gitfetch)
         """
         self.cache_expiry_minutes = cache_expiry_minutes
+        self.CACHE_DIR = cache_dir or (
+            Path.home() / ".local" / "share" / "gitfetch")
+        self.DB_FILE = self.CACHE_DIR / "cache.db"
         self._ensure_cache_dir()
         self._init_database()
 
