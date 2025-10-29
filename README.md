@@ -59,7 +59,7 @@ pip install git+https://github.com/Matars/gitfetch
 - **Gitea/Forgejo/Codeberg** - Uses personal access tokens
 - **Sourcehut** - Uses personal access tokens
 
-## Unisntall
+## Uninstall
 
 ```bash
 brew uninstall gitfetch          # Homebrew
