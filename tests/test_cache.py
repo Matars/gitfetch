@@ -15,9 +15,8 @@ class TestCacheManager:
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        with patch('src.gitfetch.cache.CacheManager.CACHE_DIR',
-                   Path(self.temp_dir)):
-            self.cache_manager = CacheManager(cache_expiry_minutes=15)
+        self.cache_manager = CacheManager(
+            cache_expiry_minutes=15, cache_dir=Path(self.temp_dir))
 
     def teardown_method(self):
         """Clean up test fixtures."""
@@ -60,10 +59,9 @@ class TestCacheManager:
 
     def test_cache_minutes_parameter(self):
         """Test that cache_expiry_minutes parameter works."""
-        with patch('src.gitfetch.cache.CacheManager.CACHE_DIR',
-                   Path(self.temp_dir)):
-            cache_manager = CacheManager(cache_expiry_minutes=30)
-            assert cache_manager.cache_expiry_minutes == 30
+        cache_manager = CacheManager(
+            cache_expiry_minutes=30, cache_dir=Path(self.temp_dir))
+        assert cache_manager.cache_expiry_minutes == 30
 
     def test_cache_timestamp_update(self):
         """Test that caching updates the timestamp."""
