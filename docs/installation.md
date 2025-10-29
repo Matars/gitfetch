@@ -94,10 +94,12 @@ nixos-rebuild switch
 
 ### With pip
 
+Make sure you have pip installed, then run:
+
 ```bash
 git clone https://github.com/Matars/gitfetch.git
 cd gitfetch
-pip install -e .
+make dev
 ```
 
 ### With uv
