@@ -95,4 +95,4 @@ class TestCacheManager:
         assert updated_timestamp > initial_timestamp
 
         # Remove test user cache
-        self.cache_manager._remove_user_cache(username)
+        self.cache_manager.clear_user(username)
