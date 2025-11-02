@@ -4,7 +4,7 @@
 
 A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics. Display your profile and stats from various git hosting platforms in a beautiful, colorful terminal interface with extensive customization options and intelligent layout adaptation.
 
-> **Note**: This project is still maturing with only ~20 closed issues as of October 26, 2025. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues).
+> **Note**: This project is still maturing with only ~30 closed issues as of November 1st, 2025. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues).
 
 <table>
   <tr>
