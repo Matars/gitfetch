@@ -1,0 +1,45 @@
+name: Update AUR Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-aur:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          repository: Matars/gitfetch
+          path: gitfetch
+
+      - name: Get version from pyproject.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' gitfetch/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout AUR repo
+        uses: actions/checkout@v4
+        with:
+          repository: Matars/aur-gitfetch
+          token: ${{ secrets.AUR_TAP_TOKEN }}
+          path: aur-repo
+
+      - name: Update PKGBUILD
+        run: |
+          cd aur-repo
+          VERSION=${{ steps.get_version.outputs.version }}
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+      - name: Commit and push
+        run: |
+          cd aur-repo
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add PKGBUILD
+          git commit -m "Update gitfetch to v${{ steps.get_version.outputs.version }}"
+          git push
