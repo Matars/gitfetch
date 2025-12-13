@@ -77,7 +77,7 @@ class ConfigManager:
             self.config['DEFAULT'] = {
                 'username': '',
                 'cache_expiry_minutes': '15',
-                'api_key': '',
+                'token': '',
             }
             self.config.add_section('COLORS')
             for key, value in default_colors.items():
