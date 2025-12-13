@@ -201,6 +201,7 @@ def main() -> int:
 
         # Check for --local flag
         if args.local:
+            import os
             if not os.path.exists('.git'):
                 print("Error: --local requires .git folder", file=sys.stderr)
                 return 1
