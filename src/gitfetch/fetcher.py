@@ -143,8 +143,7 @@ class GitHubFetcher(BaseFetcher):
                 ['gh', 'auth', 'status'],
                 capture_output=True,
                 text=True,
-                timeout=5,
-                env={**os.environ, 'GH_TOKEN': self.token}
+                timeout=5
             )
             if result.returncode != 0:
                 print("\n⚠️  GitHub CLI is not authenticated!", file=sys.stderr)
@@ -176,8 +175,7 @@ class GitHubFetcher(BaseFetcher):
                 ['gh', 'auth', 'status', '--json', 'hosts'],
                 capture_output=True,
                 text=True,
-                timeout=5,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                timeout=5
             )
             if result.returncode != 0:
                 try:
@@ -595,8 +593,7 @@ class GitLabFetcher(BaseFetcher):
                 ['glab', 'auth', 'status'],
                 capture_output=True,
                 text=True,
-                timeout=5,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                timeout=5
             )
             if result.returncode != 0:
                 print("GitLab CLI not authenticated", file=sys.stderr)
@@ -623,8 +620,7 @@ class GitLabFetcher(BaseFetcher):
                 ['glab', 'api', '/user'],
                 capture_output=True,
                 text=True,
-                timeout=10,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                timeout=10
             )
             if result.returncode != 0:
                 raise Exception("Failed to get user info")
