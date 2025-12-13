@@ -12,7 +12,7 @@ def _get_version() -> str:
         # Try to get version from package metadata
         from importlib import metadata
         return metadata.version("gitfetch")
-    except (ImportError, metadata.PackageNotFoundError):
+    except (ImportError):
         pass
 
     # Fallback: try to read from pyproject.toml (works in development)
