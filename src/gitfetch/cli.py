@@ -4,7 +4,6 @@ Command-line interface for gitfetch
 
 import argparse
 import sys
-import os
 import subprocess
 from typing import Optional
 
@@ -29,6 +28,12 @@ def _background_refresh_cache_subprocess(username: str) -> None:
         provider = config_manager.get_provider()
         provider_url = config_manager.get_provider_url()
         token = config_manager.get_token()
+        if provider == None:
+            print("Provider not set")
+            exit(1)
+        if provider_url == None:
+            print("Provider url not set")
+            exit(1)
         fetcher = _create_fetcher(provider, provider_url, token)
 
         fresh_user_data = fetcher.fetch_user_data(username)
@@ -201,6 +206,7 @@ def main() -> int:
 
         # Check for --local flag
         if args.local:
+            import os
             if not os.path.exists('.git'):
                 print("Error: --local requires .git folder", file=sys.stderr)
                 return 1
@@ -261,6 +267,13 @@ def main() -> int:
         provider = config_manager.get_provider()
         provider_url = config_manager.get_provider_url()
         token = config_manager.get_token()
+        if provider == None:
+            print("Provider not set")
+            return 1
+        if provider_url == None:
+            print("Provider url not set")
+            return 1
+
         fetcher = _create_fetcher(provider, provider_url, token)
 
         # Handle custom box character
@@ -353,6 +366,10 @@ def main() -> int:
                     'bio': '',
                     'website': '',
                 }
+
+            if display_name == None:
+                print("display name not set")
+                return 1
 
             formatter.display(
                 display_name,
@@ -534,7 +551,7 @@ def _create_fetcher(provider: str, base_url: str, token: Optional[str] = None):
 def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
     """
     Initialize gitfetch by creating config directory and setting
-    the authenticated user as default.
+    multiple configuration options.
 
     Args:
         config_manager: ConfigManager instance
@@ -566,9 +583,10 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
 
         # Ask for token if needed
         token = None
-        if provider in ['gitlab', 'gitea', 'sourcehut']:
+        if provider in ['gitlab', 'gitea', 'sourcehut', 'github']:
             token_input = input(
-                f"Enter your {provider} personal access token "
+                f"Enter your {provider} personal access token{', needed for private repositories' if provider == 'github' else ''}\n"
+                +
                 "(optional, press Enter to skip): "
             ).strip()
             if token_input:
@@ -576,8 +594,13 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
                 config_manager.set_token(token)
 
         # Create appropriate fetcher
+        url = config_manager.get_provider_url()
+        if url == None:
+            print("Provider url could not be found.", file=sys.stderr)
+            return False
+
         fetcher = _create_fetcher(
-            provider, config_manager.get_provider_url(), token
+            provider, url, token
         )
 
         # Try to get authenticated user
