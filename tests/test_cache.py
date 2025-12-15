@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.gitfetch.cache import CacheManager
+from gitfetch.cache import CacheManager
 
 
 class TestCacheManager:
