@@ -78,7 +78,8 @@ class BaseFetcher(ABC):
             # Get commit dates
             result = subprocess.run(
                 ['git', 'log', '--pretty=format:%ai', '--all'],
-                capture_output=True, text=True, cwd=repo_path
+                capture_output=True, text=True, cwd=repo_path,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 return []
@@ -130,8 +131,9 @@ class GitHubFetcher(BaseFetcher):
         Initialize the GitHub fetcher.
 
         Args:
-            token: Optional GitHub personal access token (ignored, uses gh CLI)
+            token: Optional GitHub personal access token
         """
+        self.token=token
         pass
 
     def _check_gh_cli(self) -> None:
@@ -214,7 +216,8 @@ class GitHubFetcher(BaseFetcher):
                 ['gh', 'api', endpoint, '-X', method],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 raise Exception(f"gh api failed: {result.stderr}")
@@ -438,7 +441,8 @@ class GitHubFetcher(BaseFetcher):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 return {'total_count': 0, 'items': []}
@@ -531,7 +535,7 @@ class GitHubFetcher(BaseFetcher):
         # GraphQL query for contribution calendar (inline username)
         query = f'''{{
           user(login: "{username}") {{
-            contributionsCollection {{
+            contributionsCollection(includePrivate: true) {{
               contributionCalendar {{
                 weeks {{
                   contributionDays {{
@@ -549,7 +553,8 @@ class GitHubFetcher(BaseFetcher):
                 ['gh', 'api', 'graphql', '-f', f'query={query}'],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
 
             if result.returncode != 0:
@@ -641,7 +646,8 @@ class GitLabFetcher(BaseFetcher):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")

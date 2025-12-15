@@ -27,8 +27,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "requests>=2.0.0",
-    "readchar>=4.0.0"
+   "requests>=2.0.0",
+   "readchar>=4.0.0",
 ]
 
 [project.optional-dependencies]
