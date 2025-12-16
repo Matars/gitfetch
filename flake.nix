@@ -23,6 +23,7 @@
             requests
             readchar
             setuptools
+            webcolors
           ];
 
           # Dependencies for testing
