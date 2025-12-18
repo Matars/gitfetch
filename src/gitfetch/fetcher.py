@@ -646,7 +646,6 @@ class GitLabFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={'GH_TOKEN': self.token} if self.token != None else {}
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")
