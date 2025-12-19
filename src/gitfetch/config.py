@@ -255,7 +255,7 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['custom_box'] = box
 
-    def get_token(self) -> str:
+    def get_token(self) -> Optional[str]:
         """
         Get the personal access token from config.
 
@@ -263,7 +263,7 @@ class ConfigManager:
             Token or None if not set
         """
         token = self.config.get('DEFAULT', 'token', fallback='')
-        return token if token else ''
+        return token if token else None
 
     def set_token(self, token: str) -> None:
         """
