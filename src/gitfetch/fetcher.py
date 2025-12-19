@@ -79,6 +79,7 @@ class BaseFetcher(ABC):
             result = subprocess.run(
                 ['git', 'log', '--pretty=format:%ai', '--all'],
                 capture_output=True, text=True, cwd=repo_path,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 return []
@@ -216,7 +217,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={'GH_TOKEN': self.token} if self.token != None else {}
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 raise Exception(f"gh api failed: {result.stderr}")
@@ -441,7 +442,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={'GH_TOKEN': self.token} if self.token != None else {}
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 return {'total_count': 0, 'items': []}
@@ -553,7 +554,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={'GH_TOKEN': self.token} if self.token != None else {}
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
 
             if result.returncode != 0:
@@ -646,6 +647,7 @@ class GitLabFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")
