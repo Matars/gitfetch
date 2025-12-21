@@ -97,6 +97,12 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
         help="Fetch data specific to current local repo (requires .git folder)"
     )
 
+    general_group.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show verbose error output with full tracebacks"
+    )
+
     visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
     visual_group.add_argument(
         "--spaced",
@@ -461,12 +467,9 @@ def main() -> int:
 
         except Exception as e:
             # When debugging, print full traceback to help diagnose issues
-            # (useful when users report errors from package builds / other
-            # environments where the short error message is not enough).
             try:
-                import os
                 import traceback
-                if os.environ.get('GITFETCH_DEBUG'):
+                if args.debug:
                     traceback.print_exc()
                 else:
                     print(f"Error: {e}", file=sys.stderr)
