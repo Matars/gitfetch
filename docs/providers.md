@@ -18,6 +18,17 @@ gitfetch supports multiple Git hosting platforms with different authentication m
 2. Run `gh auth login` to authenticate
 3. gitfetch will detect and use your GitHub credentials
 
+**Token Configuration**:
+
+You can also set a token via:
+- Config file: set `token` in `[github]` section of `~/.config/gitfetch/gitfetch.conf`
+- Environment variable: `GH_TOKEN`
+
+**Rate Limits**:
+
+- **No token**: 60 requests/hour (limited, may hit limits)
+- **With token**: 5,000 requests/hour (recommended)
+
 ## GitLab
 
 **Authentication**: Uses GitLab CLI (glab)
@@ -27,6 +38,12 @@ gitfetch supports multiple Git hosting platforms with different authentication m
 1. Install GitLab CLI: `brew install glab` (macOS) or follow [official instructions](https://gitlab.com/gitlab-org/cli)
 2. Run `glab auth login` to authenticate
 3. gitfetch will detect and use your GitLab credentials
+
+**Token Configuration**:
+
+You can also set a token via:
+- Config file: set `token` in `[gitlab]` section of `~/.config/gitfetch/gitfetch.conf`
+- Environment variable: `GITLAB_TOKEN`
 
 ## Gitea/Forgejo/Codeberg
 
