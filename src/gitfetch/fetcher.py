@@ -596,6 +596,18 @@ class GitLabFetcher(BaseFetcher):
         self.base_url = base_url.rstrip('/')
         self.api_base = f"{self.base_url}/api/v4"
 
+    def _build_env(self) -> dict:
+        """
+        Build environment dict with token if available.
+
+        Returns:
+            Environment dict for subprocess calls
+        """
+        env = os.environ.copy()
+        if self.token:
+            env['GITLAB_TOKEN'] = self.token
+        return env
+
     def _check_glab_cli(self) -> None:
         """Check if GitLab CLI is installed and authenticated."""
         try:
@@ -630,7 +642,8 @@ class GitLabFetcher(BaseFetcher):
                 ['glab', 'api', '/user'],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
+                env=self._build_env()
             )
             if result.returncode != 0:
                 raise Exception("Failed to get user info")
@@ -656,7 +669,8 @@ class GitLabFetcher(BaseFetcher):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env=self._build_env()
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")
