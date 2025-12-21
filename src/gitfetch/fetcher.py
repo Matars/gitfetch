@@ -78,8 +78,7 @@ class BaseFetcher(ABC):
             # Get commit dates
             result = subprocess.run(
                 ['git', 'log', '--pretty=format:%ai', '--all'],
-                capture_output=True, text=True, cwd=repo_path,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                capture_output=True, text=True, cwd=repo_path
             )
             if result.returncode != 0:
                 return []
@@ -133,8 +132,19 @@ class GitHubFetcher(BaseFetcher):
         Args:
             token: Optional GitHub personal access token
         """
-        self.token=token
-        pass
+        super().__init__(token)
+
+    def _build_env(self) -> dict:
+        """
+        Build environment dict with token if available.
+
+        Returns:
+            Environment dict for subprocess calls
+        """
+        env = os.environ.copy()
+        if self.token:
+            env['GH_TOKEN'] = self.token
+        return env
 
     def _check_gh_cli(self) -> None:
         """Check if GitHub CLI is installed and authenticated."""
@@ -217,7 +227,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                env=self._build_env()
             )
             if result.returncode != 0:
                 raise Exception(f"gh api failed: {result.stderr}")
@@ -442,7 +452,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                env=self._build_env()
             )
             if result.returncode != 0:
                 return {'total_count': 0, 'items': []}
@@ -554,7 +564,7 @@ class GitHubFetcher(BaseFetcher):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                env=self._build_env()
             )
 
             if result.returncode != 0:
@@ -646,8 +656,7 @@ class GitLabFetcher(BaseFetcher):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
-                env={**os.environ, 'GH_TOKEN': os.getenv('GH_TOKEN')}
+                timeout=30
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")
