@@ -583,13 +583,18 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             print(f"Unsupported provider: {provider}", file=sys.stderr)
             return False
 
-        # Ask for token
+        # Ask for token (optional - only for extra rate limits)
         token = ''
         env_var = PROVIDER_ENV_VARS.get(provider, '')
+        
+        # Make it clear CLI is required, token is optional for rate limits
+        if provider in ['github', 'gitlab']:
+            cli_name = 'gh' if provider == 'github' else 'glab'
+            print(f"\nNote: {cli_name} CLI is required for authentication.")
+            print(f"Token is optional but increases rate limits.\n")
+        
         token_msg = f"Enter your {provider} personal access token"
-        if provider == 'github':
-            token_msg += " (needed for private repositories)"
-        token_msg += f"\n(optional, press Enter to skip"
+        token_msg += f"\n(optional - for higher rate limits, press Enter to skip"
         if env_var:
             token_msg += f", or set {env_var} env var"
         token_msg += "): "
@@ -612,14 +617,16 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         # Try to get authenticated user
         try:
             username = fetcher.get_authenticated_user()
-            print(f"Using authenticated user: {username}")
+            # Show auth status with token info
+            token_status = "with token" if token else "without token (limited rate)"
+            print(f"✓ Authenticated as: {username} ({token_status})")
             provider_config.username = username
         except Exception as e:
             print(f"Could not get authenticated user: {e}")
             if provider == 'github':
-                print("Please authenticate with: gh auth login")
+                print("Please install gh CLI and run: gh auth login")
             elif provider == 'gitlab':
-                print("Please authenticate with: glab auth login")
+                print("Please install glab CLI and run: glab auth login")
             else:
                 print("Please ensure you have a valid token configured")
             return False
