@@ -384,16 +384,15 @@ class ConfigManager:
 
             f.write("\n")
 
-            # Write provider sections
+            # Write all provider sections (empty if not configured)
             known_providers = ['github', 'gitlab', 'gitea', 'sourcehut']
             for provider_section in known_providers:
-                if self.config.has_section(provider_section):
-                    f.write(f"[{provider_section}]\n")
-                    for key in ['username', 'url', 'token']:
-                        value = self.config.get(provider_section, key,
-                                                fallback='')
-                        f.write(f"{key} = {value}\n")
-                    f.write("\n")
+                f.write(f"[{provider_section}]\n")
+                for key in ['username', 'url', 'token']:
+                    value = self.config.get(provider_section, key,
+                                            fallback='') if self.config.has_section(provider_section) else ''
+                    f.write(f"{key} = {value}\n")
+                f.write("\n")
 
             if 'COLORS' in self.config._sections:
                 f.write("[COLORS]\n")
