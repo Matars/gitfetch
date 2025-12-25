@@ -3,9 +3,12 @@ Configuration manager for gitfetch
 """
 
 import configparser
+import os
 from pathlib import Path
 from typing import Optional
 import webcolors
+
+from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 
 class ConfigManager:
     """Manages gitfetch configuration."""
@@ -276,6 +279,69 @@ class ConfigManager:
             self.config['DEFAULT'] = {}
         self.config['DEFAULT']['token'] = token
 
+    def get_provider_config(self) -> Optional[ProviderConfig]:
+        """
+        Get complete provider configuration with token resolution.
+
+        Token resolution chain:
+        1. Read from provider section
+        2. Fall back to environment variable
+
+        Returns:
+            ProviderConfig with resolved token, or None if no provider set
+        """
+        provider_name = self.get_provider()
+        if not provider_name:
+            return None
+
+        section = provider_name  # e.g., "github"
+
+        # Try provider section first, fall back to DEFAULT for backward compat
+        if self.config.has_section(section):
+            username = self.config.get(section, 'username', fallback='')
+            url = self.config.get(section, 'url', fallback='')
+            token = self.config.get(section, 'token', fallback='')
+        else:
+            # Backward compatibility: read from DEFAULT
+            username = self.get_default_username() or ''
+            url = self.get_provider_url() or ''
+            token = self.get_token() or ''
+
+        # Token resolution: config -> env var
+        if not token:
+            env_var = PROVIDER_ENV_VARS.get(provider_name, '')
+            if env_var:
+                token = os.getenv(env_var, '') or ''
+
+        # Use default URL if not specified
+        if not url:
+            url = PROVIDER_DEFAULT_URLS.get(provider_name, '')
+
+        return ProviderConfig(
+            name=provider_name,
+            username=username,
+            url=url,
+            token=token
+        )
+
+    def set_provider_config(self, config: ProviderConfig) -> None:
+        """
+        Save provider configuration to its dedicated section.
+
+        Args:
+            config: ProviderConfig to save
+        """
+        section = config.name
+        if not self.config.has_section(section):
+            self.config.add_section(section)
+
+        self.config.set(section, 'username', config.username)
+        self.config.set(section, 'url', config.url)
+        self.config.set(section, 'token', config.token)
+
+        # Also set provider in DEFAULT
+        self.set_provider(config.name)
+
     def save(self) -> None:
         """Save configuration to file."""
         import os
@@ -317,6 +383,31 @@ class ConfigManager:
                 f.write(f"show_date = {show_date}\n")
 
             f.write("\n")
+
+            # Write all provider sections (empty if not configured)
+            # Use known default URLs for providers
+            known_providers = ['github', 'gitlab', 'gitea', 'sourcehut']
+            for provider_section in known_providers:
+                f.write(f"[{provider_section}]\n")
+                has_section = self.config.has_section(provider_section)
+                
+                # Username
+                username = self.config.get(provider_section, 'username',
+                                           fallback='') if has_section else ''
+                f.write(f"username = {username}\n")
+                
+                # URL - use default if not set
+                url = self.config.get(provider_section, 'url',
+                                      fallback='') if has_section else ''
+                if not url:
+                    url = PROVIDER_DEFAULT_URLS.get(provider_section, '')
+                f.write(f"url = {url}\n")
+                
+                # Token
+                token = self.config.get(provider_section, 'token',
+                                        fallback='') if has_section else ''
+                f.write(f"token = {token}\n")
+                f.write("\n")
 
             if 'COLORS' in self.config._sections:
                 f.write("[COLORS]\n")

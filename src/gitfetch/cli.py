@@ -12,6 +12,7 @@ import readchar
 from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
+from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 from . import __version__
 
 
@@ -25,16 +26,16 @@ def _background_refresh_cache_subprocess(username: str) -> None:
         config_manager = ConfigManager()
         cache_expiry = config_manager.get_cache_expiry_minutes()
         cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
-        provider = config_manager.get_provider()
-        provider_url = config_manager.get_provider_url()
-        token = config_manager.get_token()
-        if provider == None:
-            print("Provider not set")
+
+        provider_config = config_manager.get_provider_config()
+        if not provider_config:
             exit(1)
-        if provider_url == None:
-            print("Provider url not set")
+        if not provider_config.url:
             exit(1)
-        fetcher = _create_fetcher(provider, provider_url, token)
+
+        fetcher = _create_fetcher(
+            provider_config.name, provider_config.url, provider_config.token or None
+        )
 
         fresh_user_data = fetcher.fetch_user_data(username)
         fresh_stats = fetcher.fetch_user_stats(username, fresh_user_data)
@@ -264,17 +265,18 @@ def main() -> int:
         # Initialize components
         cache_expiry = config_manager.get_cache_expiry_minutes()
         cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
-        provider = config_manager.get_provider()
-        provider_url = config_manager.get_provider_url()
-        token = config_manager.get_token()
-        if provider == None:
-            print("Provider not set")
+
+        provider_config = config_manager.get_provider_config()
+        if not provider_config:
+            print("Provider not set. Run: gitfetch --change-provider")
             return 1
-        if provider_url == None:
-            print("Provider url not set")
+        if not provider_config.url:
+            print("Provider URL not set. Run: gitfetch --change-provider")
             return 1
 
-        fetcher = _create_fetcher(provider, provider_url, token)
+        fetcher = _create_fetcher(
+            provider_config.name, provider_config.url, provider_config.token or None
+        )
 
         # Handle custom box character
         custom_box = args.custom_box
@@ -565,54 +567,66 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         if not provider:
             return False
 
-        config_manager.set_provider(provider)
-
-        # Set default URL for known providers
+        # Determine URL for provider
         if provider == 'github':
-            config_manager.set_provider_url('https://api.github.com')
+            url = PROVIDER_DEFAULT_URLS.get('github', 'https://api.github.com')
         elif provider == 'gitlab':
-            config_manager.set_provider_url('https://gitlab.com')
+            url = PROVIDER_DEFAULT_URLS.get('gitlab', 'https://gitlab.com')
         elif provider == 'gitea':
             url = input("Enter Gitea/Forgejo/Codeberg URL: ").strip()
             if not url:
                 print("Provider URL required", file=sys.stderr)
                 return False
-            config_manager.set_provider_url(url)
         elif provider == 'sourcehut':
-            config_manager.set_provider_url('https://git.sr.ht')
-
-        # Ask for token if needed
-        token = None
-        if provider in ['gitlab', 'gitea', 'sourcehut', 'github']:
-            token_input = input(
-                f"Enter your {provider} personal access token{', needed for private repositories' if provider == 'github' else ''}\n"
-                +
-                "(optional, press Enter to skip): "
-            ).strip()
-            if token_input:
-                token = token_input
-                config_manager.set_token(token)
-
-        # Create appropriate fetcher
-        url = config_manager.get_provider_url()
-        if url == None:
-            print("Provider url could not be found.", file=sys.stderr)
+            url = PROVIDER_DEFAULT_URLS.get('sourcehut', 'https://git.sr.ht')
+        else:
+            print(f"Unsupported provider: {provider}", file=sys.stderr)
             return False
 
-        fetcher = _create_fetcher(
-            provider, url, token
+        # Ask for token (optional - only for extra rate limits)
+        token = ''
+        env_var = PROVIDER_ENV_VARS.get(provider, '')
+        
+        # Make it clear CLI is required, token is optional for rate limits
+        if provider in ['github', 'gitlab']:
+            cli_name = 'gh' if provider == 'github' else 'glab'
+            print(f"\nNote: {cli_name} CLI is required for authentication.")
+            print(f"Token is optional but increases rate limits.\n")
+        
+        token_msg = f"Enter your {provider} personal access token"
+        token_msg += f"\n(optional - for higher rate limits, press Enter to skip"
+        if env_var:
+            token_msg += f", or set {env_var} env var"
+        token_msg += "): "
+
+        token_input = input(token_msg).strip()
+        if token_input:
+            token = token_input
+
+        # Create provider config
+        provider_config = ProviderConfig(
+            name=provider,
+            username='',  # Will be set after fetcher auth
+            url=url,
+            token=token
         )
+
+        # Create fetcher to get authenticated user
+        fetcher = _create_fetcher(provider, url, token or None)
 
         # Try to get authenticated user
         try:
             username = fetcher.get_authenticated_user()
-            print(f"Using authenticated user: {username}")
+            # Show auth status with token info
+            token_status = "with token" if token else "without token (limited rate)"
+            print(f"✓ Authenticated as: {username} ({token_status})")
+            provider_config.username = username
         except Exception as e:
             print(f"Could not get authenticated user: {e}")
             if provider == 'github':
-                print("Please authenticate with: gh auth login")
+                print("Please install gh CLI and run: gh auth login")
             elif provider == 'gitlab':
-                print("Please authenticate with: glab auth login")
+                print("Please install glab CLI and run: glab auth login")
             else:
                 print("Please ensure you have a valid token configured")
             return False
@@ -634,7 +648,8 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         else:
             config_manager.set_cache_expiry_minutes(15)
 
-        # Save configuration
+        # Save configuration using new provider config system
+        config_manager.set_provider_config(provider_config)
         config_manager.set_default_username(username)
         config_manager.save()
 
