@@ -193,8 +193,9 @@ class GitHubFetcher(BaseFetcher):
             )
             if result.returncode != 0:
                 try:
-                    yml = open(os.path.expanduser(
-                        "~/.config/gh/hosts.yml"), 'r').read()
+                    with open(os.path.expanduser(
+                            "~/.config/gh/hosts.yml"), 'r') as f:
+                        yml = f.read()
                     user = re.findall(" +user: +(.*)", yml)
                     if len(user) != 0:
                         return user[0]
