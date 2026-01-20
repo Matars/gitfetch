@@ -6,9 +6,12 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import subprocess
 import json
+import logging
 import sys
 import os
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class BaseFetcher(ABC):
@@ -118,7 +121,8 @@ class BaseFetcher(ABC):
 
             return weeks
 
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to build contribution graph from git: {e}")
             return []
 
 

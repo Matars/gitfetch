@@ -3,6 +3,7 @@ Command-line interface for gitfetch
 """
 
 import argparse
+import logging
 import sys
 import subprocess
 from typing import Optional
@@ -14,6 +15,8 @@ from .cache import CacheManager
 from .config import ConfigManager
 from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 from . import __version__
+
+logger = logging.getLogger(__name__)
 
 
 def _background_refresh_cache_subprocess(username: str) -> None:
@@ -40,9 +43,9 @@ def _background_refresh_cache_subprocess(username: str) -> None:
         fresh_user_data = fetcher.fetch_user_data(username)
         fresh_stats = fetcher.fetch_user_stats(username, fresh_user_data)
         cache_manager.cache_user_data(username, fresh_user_data, fresh_stats)
-    except Exception:
-        # Silent fail - this is background refresh
-        pass
+    except Exception as e:
+        # Log but don't fail - this is background refresh
+        logger.warning(f"Background refresh failed: {e}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -448,9 +451,9 @@ def main() -> int:
                             stdin=subprocess.DEVNULL,
                             start_new_session=True,  # detach from parent
                         )
-                    except Exception:
-                        # If subprocess fails, silently continue
-                        pass
+                    except Exception as e:
+                        # Log but don't fail - stale data was already displayed
+                        logger.warning(f"Background refresh subprocess spawn failed: {e}")
 
                     return 0
 

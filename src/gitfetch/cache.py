@@ -3,10 +3,13 @@ Cache manager for storing GitHub data locally using SQLite
 """
 
 import sqlite3
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class CacheManager:
@@ -218,8 +221,8 @@ class CacheManager:
             ))
             conn.commit()
             conn.close()
-        except sqlite3.Error:
-            pass  # Silently fail on cache errors
+        except sqlite3.Error as e:
+            logger.warning(f"Cache write failed for user '{username}': {e}")
 
     def clear(self) -> None:
         """Clear all cached data."""
@@ -229,8 +232,8 @@ class CacheManager:
             cursor.execute('DELETE FROM users')
             conn.commit()
             conn.close()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as e:
+            logger.warning(f"Cache clear failed: {e}")
 
     def clear_user(self, username: str) -> None:
         """
@@ -245,8 +248,8 @@ class CacheManager:
             cursor.execute('DELETE FROM users WHERE username = ?', (username,))
             conn.commit()
             conn.close()
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as e:
+            logger.warning(f"Cache clear failed for user '{username}': {e}")
 
     def _is_cache_expired(self, cached_at: datetime) -> bool:
         """
@@ -301,9 +304,11 @@ class CacheManager:
                     cached_at = datetime.fromisoformat(row[1])
                     result.append((row[0], cached_at))
                 except ValueError:
+                    logger.warning(f"Invalid cache timestamp for user '{row[0]}': {row[1]}")
                     continue
             return result
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning(f"Failed to list cached accounts: {e}")
             return []
 
     def get_cache_stats(self) -> Dict[str, Any]:
@@ -341,7 +346,8 @@ class CacheManager:
                 "oldest_entry": oldest[0] if oldest else None,
                 "newest_entry": newest[0] if newest else None
             }
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning(f"Failed to get cache stats: {e}")
             return {
                 "total_entries": 0,
                 "oldest_entry": None,
@@ -367,7 +373,8 @@ class CacheManager:
             conn.commit()
             conn.close()
             return result
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning(f"Query execution failed: {e}")
             return None
 
     def close(self) -> None:
