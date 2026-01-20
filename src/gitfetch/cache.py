@@ -260,7 +260,7 @@ class CacheManager:
         # raise OverflowError on some platforms (assuming on 32-bit builds).
         try:
             minutes = int(self.cache_expiry_minutes)
-        except Exception:
+        except (ValueError, TypeError):
             minutes = 15
 
         # Enforce sensible bounds: minimum 1 minute, cap to MAX_MINUTES
