@@ -39,21 +39,20 @@ class CacheManager:
     def _init_database(self) -> None:
         """Initialize SQLite database with required tables."""
         self._ensure_cache_dir()
-        conn = sqlite3.connect(self.DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                user_data TEXT NOT NULL,
-                stats_data TEXT NOT NULL,
-                cached_at TIMESTAMP NOT NULL
+        with sqlite3.connect(self.DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    user_data TEXT NOT NULL,
+                    stats_data TEXT NOT NULL,
+                    cached_at TIMESTAMP NOT NULL
+                )
+            ''')
+            cursor.execute(
+                'CREATE INDEX IF NOT EXISTS idx_cached_at ON users(cached_at)'
             )
-        ''')
-        cursor.execute(
-            'CREATE INDEX IF NOT EXISTS idx_cached_at ON users(cached_at)'
-        )
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     def get_cached_user_data(self, username: str) -> Optional[Dict[str, Any]]:
         """
@@ -94,15 +93,14 @@ class CacheManager:
             Tuple of (user_data, stats) or None if not available/expired
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(
-                'SELECT user_data, stats_data, cached_at FROM users '
-                'WHERE username = ?',
-                (username,)
-            )
-            row = cursor.fetchone()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT user_data, stats_data, cached_at FROM users '
+                    'WHERE username = ?',
+                    (username,)
+                )
+                row = cursor.fetchone()
 
             if not row:
                 return None
@@ -130,15 +128,14 @@ class CacheManager:
             Tuple of (user_data, stats, cached_at) or None if not available
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(
-                'SELECT user_data, stats_data, cached_at FROM users '
-                'WHERE username = ?',
-                (username,)
-            )
-            row = cursor.fetchone()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT user_data, stats_data, cached_at FROM users '
+                    'WHERE username = ?',
+                    (username,)
+                )
+                row = cursor.fetchone()
 
             if not row:
                 return None
@@ -207,31 +204,29 @@ class CacheManager:
             stats: Statistics data to cache
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO users
-                (username, user_data, stats_data, cached_at)
-                VALUES (?, ?, ?, ?)
-            ''', (
-                username,
-                json.dumps(user_data),
-                json.dumps(stats),
-                datetime.now().isoformat()
-            ))
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT OR REPLACE INTO users
+                    (username, user_data, stats_data, cached_at)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    username,
+                    json.dumps(user_data),
+                    json.dumps(stats),
+                    datetime.now().isoformat()
+                ))
+                conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache write failed for user '{username}': {e}")
 
     def clear(self) -> None:
         """Clear all cached data."""
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM users')
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM users')
+                conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache clear failed: {e}")
 
@@ -243,11 +238,10 @@ class CacheManager:
             username: GitHub username to clear from cache
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM users WHERE username = ?', (username,))
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+                conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache clear failed for user '{username}': {e}")
 
@@ -292,11 +286,10 @@ class CacheManager:
             List of tuples (username, cached_at)
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute('SELECT username, cached_at FROM users')
-            rows = cursor.fetchall()
-            conn.close()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT username, cached_at FROM users')
+                rows = cursor.fetchall()
 
             result = []
             for row in rows:
@@ -319,27 +312,25 @@ class CacheManager:
             Dictionary with cache statistics (total entries, oldest, newest)
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
 
-            # Get total entries
-            cursor.execute('SELECT COUNT(*) FROM users')
-            total = cursor.fetchone()[0]
+                # Get total entries
+                cursor.execute('SELECT COUNT(*) FROM users')
+                total = cursor.fetchone()[0]
 
-            # Get oldest and newest entries
-            cursor.execute(
-                'SELECT username, cached_at FROM users '
-                'ORDER BY cached_at ASC LIMIT 1'
-            )
-            oldest = cursor.fetchone()
+                # Get oldest and newest entries
+                cursor.execute(
+                    'SELECT username, cached_at FROM users '
+                    'ORDER BY cached_at ASC LIMIT 1'
+                )
+                oldest = cursor.fetchone()
 
-            cursor.execute(
-                'SELECT username, cached_at FROM users '
-                'ORDER BY cached_at DESC LIMIT 1'
-            )
-            newest = cursor.fetchone()
-
-            conn.close()
+                cursor.execute(
+                    'SELECT username, cached_at FROM users '
+                    'ORDER BY cached_at DESC LIMIT 1'
+                )
+                newest = cursor.fetchone()
 
             return {
                 "total_entries": total,
@@ -366,13 +357,12 @@ class CacheManager:
             Query results or None
         """
         try:
-            conn = sqlite3.connect(self.DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            result = cursor.fetchall()
-            conn.commit()
-            conn.close()
-            return result
+            with sqlite3.connect(self.DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                result = cursor.fetchall()
+                conn.commit()
+                return result
         except sqlite3.Error as e:
             logger.warning(f"Query execution failed: {e}")
             return None
