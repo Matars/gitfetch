@@ -18,6 +18,7 @@ from .display import DisplayFormatter
 from .cache import CacheManager
 from .config import ConfigManager
 from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
+from .exceptions import redact_sensitive_info
 from . import __version__
 
 logger = logging.getLogger(__name__)
@@ -521,7 +522,7 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
     return 0
 
 
-def _handle_error(e: Exception, args: argparse.Namespace) -> None:
+def _handle_error(e: Exception, args: argparse.Namespace, config_manager: ConfigManager | None = None) -> None:
     """Handle and display errors with helpful messages."""
     try:
         import traceback
@@ -529,6 +530,21 @@ def _handle_error(e: Exception, args: argparse.Namespace) -> None:
             traceback.print_exc()
         else:
             error_msg = str(e)
+
+            # Redact token from error message if available
+            tokens_to_redact = []
+            if config_manager:
+                provider_config = config_manager.get_provider_config()
+                if provider_config and provider_config.token:
+                    tokens_to_redact.append(provider_config.token)
+                # Also check default token
+                default_token = config_manager.get_token()
+                if default_token and default_token not in tokens_to_redact:
+                    tokens_to_redact.append(default_token)
+
+            if tokens_to_redact:
+                error_msg = redact_sensitive_info(error_msg, tokens_to_redact)
+
             if "auth" in error_msg.lower() or "token" in error_msg.lower():
                 print(f"Authentication Error: {error_msg}", file=sys.stderr)
                 print("Hint: Check your token or run 'gh auth login' for GitHub", file=sys.stderr)
@@ -646,7 +662,7 @@ def main() -> int:
     try:
         return _fetch_and_display_data(args, username, config_manager, cache_manager, fetcher, formatter)
     except Exception as e:
-        _handle_error(e, args)
+        _handle_error(e, args, config_manager)
         return 1
 
 

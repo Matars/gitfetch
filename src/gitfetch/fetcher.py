@@ -28,6 +28,7 @@ from .exceptions import (
     APIError,
     RateLimitError,
     UserNotFoundError,
+    redact_sensitive_info,
 )
 from .calculations import (
     calculate_current_streak,
@@ -1043,7 +1044,9 @@ class GiteaFetcher(BaseFetcher):
             data = response.json()
             return data.get("login", "")
         except Exception as e:
-            raise Exception(f"Could not get authenticated user: {e}")
+            # Redact token from error message
+            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            raise Exception(f"Could not get authenticated user: {error_msg}")
 
     @retry_on_failure(
         max_attempts=3,
@@ -1076,7 +1079,9 @@ class GiteaFetcher(BaseFetcher):
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise Exception(f"Gitea API request failed: {e}")
+            # Redact token from error message
+            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            raise Exception(f"Gitea API request failed: {error_msg}")
 
     def fetch_user_data(self, username: str) -> Dict[str, Any]:
         """
@@ -1192,7 +1197,9 @@ class SourcehutFetcher(BaseFetcher):
             data = response.json()
             return data.get("data", {}).get("me", {}).get("username", "")
         except Exception as e:
-            raise Exception(f"Could not get authenticated user: {e}")
+            # Redact token from error message
+            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            raise Exception(f"Could not get authenticated user: {error_msg}")
 
     def fetch_user_data(self, username: str) -> Dict[str, Any]:
         """
@@ -1230,7 +1237,9 @@ class SourcehutFetcher(BaseFetcher):
             data = response.json()
             return data.get("data", {}).get("user", {})
         except Exception as e:
-            raise Exception(f"Sourcehut API request failed: {e}")
+            # Redact token from error message
+            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            raise Exception(f"Sourcehut API request failed: {error_msg}")
 
     def fetch_user_stats(self, username: str, user_data=None):
         """

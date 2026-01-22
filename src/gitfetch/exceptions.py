@@ -5,6 +5,48 @@ This module defines all custom exception classes used throughout
 the application, providing better error handling and user experience.
 """
 
+import re
+
+
+def redact_sensitive_info(text: str, tokens: list[str] | None = None) -> str:
+    """
+    Redact sensitive information (tokens, passwords) from error messages.
+
+    Args:
+        text: The text to redact sensitive information from
+        tokens: Optional list of tokens to redact (will also detect common patterns)
+
+    Returns:
+        Text with sensitive information redacted
+    """
+    if not text:
+        return text
+
+    redacted = text
+
+    # Redact tokens if provided
+    if tokens:
+        for token in tokens:
+            if token and len(token) > 4:
+                # Redact most of the token, keeping first 4 and last 4 chars
+                if len(token) <= 8:
+                    redacted = redacted.replace(token, "****")
+                else:
+                    redacted = redacted.replace(token, f"{token[:4]}...{token[-4:]}")
+
+    # Redact common sensitive patterns in URLs and headers
+    # Pattern: Bearer/GitHub/Basic tokens in URLs or headers
+    patterns_to_redact = [
+        (r'(Bearer|GitHub|token|Basic)\s+[a-zA-Z0-9_\-\.]{20,}', r'\1 ****'),
+        (r'authorization["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}', 'authorization: ****'),
+        (r'token["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}', 'token: ****'),
+    ]
+
+    for pattern, replacement in patterns_to_redact:
+        redacted = re.sub(pattern, replacement, redacted, flags=re.IGNORECASE)
+
+    return redacted
+
 
 class GitfetchException(Exception):
     """Base exception for all gitfetch errors."""
