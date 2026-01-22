@@ -35,6 +35,7 @@ from .calculations import (
     calculate_max_streak,
     calculate_total_contributions,
     calculate_streaks,
+    calculate_language_percentages,
 )
 
 logger = logging.getLogger(__name__)
@@ -673,17 +674,8 @@ class GitHubFetcher(BaseFetcher):
                         # Assign a small default weight for repos without detailed stats
                         language_bytes[basic_lang] += 1
 
-        # Calculate percentages
-        total_bytes = sum(language_bytes.values())
-        if total_bytes == 0:
-            return {}
-
-        language_percentages = {
-            lang: (byte_count / total_bytes) * 100
-            for lang, byte_count in language_bytes.items()
-        }
-
-        return language_percentages
+        # Calculate percentages using centralized calculation function
+        return calculate_language_percentages(language_bytes)
 
     def _fetch_repo_languages(self, repo: dict) -> Dict[str, int]:
         """

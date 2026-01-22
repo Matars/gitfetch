@@ -10,6 +10,7 @@ import unicodedata
 from datetime import datetime
 from .config import ConfigManager
 from .text_patterns import CHAR_PATTERNS
+from .calculations import calculate_total_contributions, get_contribution_color_level
 import subprocess
 import webcolors
 
@@ -1275,11 +1276,7 @@ class DisplayFormatter:
 
     def _calculate_total_contributions(self, weeks_data: list) -> int:
         """Sum total contributions across all provided weeks."""
-        total = 0
-        for week in weeks_data:
-            for day in week.get('contributionDays', []):
-                total += day.get('contributionCount', 0)
-        return total
+        return calculate_total_contributions(weeks_data)
 
     def _empty_graph_placeholder(self) -> list:
         """Placeholder lines when contribution data is missing."""
@@ -1346,17 +1343,7 @@ class DisplayFormatter:
 
         reset = '\033[0m'
         # Map contribution count to configurable color levels
-        # GitHub thresholds: 0, 1-2, 3-5, 6-9, 10+
-        if count == 0:
-            level = '0'
-        elif count <= 2:
-            level = '1'
-        elif count <= 5:
-            level = '2'
-        elif count <= 9:
-            level = '3'
-        else:
-            level = '4'
+        level = get_contribution_color_level(count)
         bg = hex_to_ansi(self.hex_colors[level], background=True)
 
         # Two background-coloured spaces produce a filled square that
@@ -1374,17 +1361,7 @@ class DisplayFormatter:
 
         reset = '\033[0m'
         # Map contributions to configurable color levels
-        # GitHub thresholds: 0, 1-2, 3-5, 6-9, 10+
-        if count == 0:
-            level = '0'
-        elif count <= 2:
-            level = '1'
-        elif count <= 5:
-            level = '2'
-        elif count <= 9:
-            level = '3'
-        else:
-            level = '4'
+        level = get_contribution_color_level(count)
         color = hex_to_ansi(self.hex_colors[level], background=False)
 
         # Use custom box character + space = 2 chars wide

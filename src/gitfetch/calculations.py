@@ -114,3 +114,52 @@ def calculate_streaks(weeks_data: List[Dict[str, Any]]) -> Tuple[int, int]:
             break
 
     return current_streak, max_streak
+
+
+def get_contribution_color_level(count: int) -> str:
+    """
+    Map contribution count to color level (0-4).
+
+    Uses GitHub's color thresholds: 0, 1-2, 3-5, 6-9, 10+
+
+    Args:
+        count: Number of contributions for a day
+
+    Returns:
+        String color level from '0' to '4'
+    """
+    if count == 0:
+        return '0'
+    elif count <= 2:
+        return '1'
+    elif count <= 5:
+        return '2'
+    elif count <= 9:
+        return '3'
+    else:
+        return '4'
+
+
+def calculate_language_percentages(language_bytes: Dict[str, int]) -> Dict[str, float]:
+    """
+    Calculate language usage percentages from language byte counts.
+
+    Args:
+        language_bytes: Dictionary mapping language names to byte counts
+
+    Returns:
+        Dictionary mapping language names to percentages (0-100)
+    """
+    if not language_bytes:
+        return {}
+
+    total_bytes = sum(language_bytes.values())
+    if total_bytes == 0:
+        return {}
+
+    language_percentages = {
+        lang: (byte_count / total_bytes) * 100
+        for lang, byte_count in language_bytes.items()
+    }
+
+    return language_percentages
