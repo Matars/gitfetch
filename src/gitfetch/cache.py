@@ -9,13 +9,15 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
 
+from .constants import DEFAULT_CACHE_EXPIRY_MINUTES
+
 logger = logging.getLogger(__name__)
 
 
 class CacheManager:
     """Manages local caching of GitHub data using SQLite."""
 
-    def __init__(self, cache_expiry_minutes: int = 15,
+    def __init__(self, cache_expiry_minutes: int = DEFAULT_CACHE_EXPIRY_MINUTES,
                  cache_dir: Optional[Path] = None):
         """
         Initialize the cache manager.
