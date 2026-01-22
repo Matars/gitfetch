@@ -718,22 +718,45 @@ def _prompt_provider() -> Optional[str]:
         return None
 
 
+# Provider registry pattern - maps provider names to their fetcher classes
+# Lazy imports to avoid circular dependencies
+_FETCHER_REGISTRY = {
+    'github': lambda token: __import__('fetcher', fromlist=['GitHubFetcher']).GitHubFetcher(token),
+    'gitlab': lambda base_url, token: __import__('fetcher', fromlist=['GitLabFetcher']).GitLabFetcher(base_url, token),
+    'gitea': lambda base_url, token: __import__('fetcher', fromlist=['GiteaFetcher']).GiteaFetcher(base_url, token),
+    'sourcehut': lambda base_url, token: __import__('fetcher', fromlist=['SourcehutFetcher']).SourcehutFetcher(base_url, token),
+}
+
+
 def _create_fetcher(provider: str, base_url: str, token: Optional[str] = None):
-    """Create the appropriate fetcher for the provider."""
+    """
+    Create the appropriate fetcher for the provider using registry pattern.
+
+    Args:
+        provider: Provider name (github, gitlab, gitea, sourcehut)
+        base_url: Base URL for the provider API
+        token: Optional authentication token
+
+    Returns:
+        Fetcher instance for the specified provider
+
+    Raises:
+        ValueError: If provider is not supported
+    """
+    fetcher_factory = _FETCHER_REGISTRY.get(provider)
+
+    if not fetcher_factory:
+        supported = ', '.join(_FETCHER_REGISTRY.keys())
+        raise ValueError(
+            f"Unsupported provider: {provider}. "
+            f"Supported providers: {supported}"
+        )
+
+    # GitHub fetcher only takes token, others take (base_url, token)
     if provider == 'github':
-        from .fetcher import GitHubFetcher
-        return GitHubFetcher(token)
-    elif provider == 'gitlab':
-        from .fetcher import GitLabFetcher
-        return GitLabFetcher(base_url, token)
-    elif provider == 'gitea':
-        from .fetcher import GiteaFetcher
-        return GiteaFetcher(base_url, token)
-    elif provider == 'sourcehut':
-        from .fetcher import SourcehutFetcher
-        return SourcehutFetcher(base_url, token)
+        return fetcher_factory(token)
     else:
-        raise ValueError(f"Unsupported provider: {provider}")
+        return fetcher_factory(base_url, token)
 
 
 def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
