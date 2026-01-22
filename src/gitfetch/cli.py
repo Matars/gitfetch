@@ -24,7 +24,7 @@ from . import __version__
 logger = logging.getLogger(__name__)
 
 # Global tracking for cleanup
-_active_spinners: List['Spinner'] = []
+_active_spinners: List["Spinner"] = []
 _background_processes: List[subprocess.Popen] = []
 _cache_manager_instance: Optional[CacheManager] = None
 
@@ -32,7 +32,9 @@ _cache_manager_instance: Optional[CacheManager] = None
 def _cleanup_resources() -> None:
     """Cleanup all active resources on exit or interruption."""
     # Stop all active spinners
-    for spinner in _active_spinners[:]:  # Copy list to avoid modification during iteration
+    for spinner in _active_spinners[
+        :
+    ]:  # Copy list to avoid modification during iteration
         try:
             spinner.stop()
         except Exception as e:
@@ -69,7 +71,7 @@ signal.signal(signal.SIGTERM, _signal_handler)
 class Spinner:
     """A simple terminal spinner for showing loading progress."""
 
-    SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
     def __init__(self, message: str = "Loading..."):
         """
@@ -87,15 +89,15 @@ class Spinner:
         for frame in itertools.cycle(self.SPINNER_FRAMES):
             if self._stop_event.is_set():
                 break
-            sys.stdout.write(f'\r{frame} {self.message}')
+            sys.stdout.write(f"\r{frame} {self.message}")
             sys.stdout.flush()
             self._stop_event.wait(0.1)
 
         # Clear the spinner line when done
-        sys.stdout.write('\r' + ' ' * (len(self.message) + 3) + '\r')
+        sys.stdout.write("\r" + " " * (len(self.message) + 3) + "\r")
         sys.stdout.flush()
 
-    def start(self) -> 'Spinner':
+    def start(self) -> "Spinner":
         """Start the spinner animation."""
         self._stop_event.clear()
         self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
@@ -172,157 +174,127 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="""A neofetch-style CLI tool for git.
 Supports GitHub, GitLab, Gitea, and Sourcehut.""",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
-        "username",
-        nargs="?",
-        help="Username to fetch stats for"
-    )
+    parser.add_argument("username", nargs="?", help="Username to fetch stats for")
 
-    general_group = parser.add_argument_group('\033[92mGeneral Options\033[0m')
+    general_group = parser.add_argument_group("\033[92mGeneral Options\033[0m")
     general_group.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass cache and fetch fresh data"
+        "--no-cache", action="store_true", help="Bypass cache and fetch fresh data"
     )
 
     general_group.add_argument(
-        "--clear-cache",
-        action="store_true",
-        help="Clear the cache and exit"
+        "--clear-cache", action="store_true", help="Clear the cache and exit"
     )
 
     general_group.add_argument(
-        "--version",
-        action="store_true",
-        help="Show version and check for updates"
+        "--version", action="store_true", help="Show version and check for updates"
     )
 
     general_group.add_argument(
         "--change-provider",
         action="store_true",
-        help="Change the configured git provider"
+        help="Change the configured git provider",
     )
 
     # Hidden argument for background cache refresh
     general_group.add_argument(
         "--background-refresh",
         type=str,
-        help=argparse.SUPPRESS  # Hide from help
+        help=argparse.SUPPRESS,  # Hide from help
     )
 
     general_group.add_argument(
         "--local",
         action="store_true",
-        help="Fetch data specific to current local repo (requires .git folder)"
+        help="Fetch data specific to current local repo (requires .git folder)",
     )
 
     general_group.add_argument(
         "--debug",
         action="store_true",
-        help="Show verbose error output with full tracebacks"
+        help="Show verbose error output with full tracebacks",
     )
 
-    visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
+    visual_group = parser.add_argument_group("\033[94mVisual Options\033[0m")
     visual_group.add_argument(
-        "--spaced",
-        action="store_true",
-        help="Enable spaced layout"
+        "--spaced", action="store_true", help="Enable spaced layout"
     )
 
     visual_group.add_argument(
-        "--not-spaced",
-        action="store_true",
-        help="Disable spaced layout"
+        "--not-spaced", action="store_true", help="Disable spaced layout"
     )
 
     visual_group.add_argument(
         "--custom-box",
         type=str,
-        help="Custom character for contribution blocks (e.g., '■', '█')"
+        help="Custom character for contribution blocks (e.g., '■', '█')",
     )
 
     visual_group.add_argument(
-        "--graph-only",
-        action="store_true",
-        help="Show only the contribution graph"
+        "--graph-only", action="store_true", help="Show only the contribution graph"
     )
 
     visual_group.add_argument(
-        "--width",
-        type=int,
-        help="Set custom width for contribution graph"
+        "--width", type=int, help="Set custom width for contribution graph"
     )
 
     visual_group.add_argument(
-        "--height",
-        type=int,
-        help="Set custom height for contribution graph"
+        "--height", type=int, help="Set custom height for contribution graph"
     )
 
     visual_group.add_argument(
         "--text",
         type=str,
-        help="Display text as contribution graph pattern (simulation only)"
+        help="Display text as contribution graph pattern (simulation only)",
     )
 
     visual_group.add_argument(
         "--shape",
-        nargs='+',
-        help=("Display one or more predefined shapes as contribution graph "
-              "(simulation only). Provide multiple shapes after the option: "
-              "--shape kitty kitty")
+        nargs="+",
+        help=(
+            "Display one or more predefined shapes as contribution graph "
+            "(simulation only). Provide multiple shapes after the option: "
+            "--shape kitty kitty"
+        ),
     )
 
     visual_group.add_argument(
         "--graph-timeline",
         action="store_true",
-        help="Show git timeline graph instead of contribution graph"
+        help="Show git timeline graph instead of contribution graph",
     )
 
-    visibility_group = parser.add_argument_group('\033[95mVisibility\033[0m')
+    visibility_group = parser.add_argument_group("\033[95mVisibility\033[0m")
     visibility_group.add_argument(
         "--no-date",
         action="store_true",
-        help="Hide month/date labels on contribution graph"
+        help="Hide month/date labels on contribution graph",
     )
 
     visibility_group.add_argument(
-        "--no-achievements",
-        action="store_true",
-        help="Hide achievements section"
+        "--no-achievements", action="store_true", help="Hide achievements section"
     )
 
     visibility_group.add_argument(
-        "--no-languages",
-        action="store_true",
-        help="Hide languages section"
+        "--no-languages", action="store_true", help="Hide languages section"
     )
 
     visibility_group.add_argument(
-        "--no-issues",
-        action="store_true",
-        help="Hide issues section"
+        "--no-issues", action="store_true", help="Hide issues section"
     )
 
     visibility_group.add_argument(
-        "--no-pr",
-        action="store_true",
-        help="Hide pull requests section"
+        "--no-pr", action="store_true", help="Hide pull requests section"
     )
 
     visibility_group.add_argument(
-        "--no-account",
-        action="store_true",
-        help="Hide account information section"
+        "--no-account", action="store_true", help="Hide account information section"
     )
 
     visibility_group.add_argument(
-        "--no-grid",
-        action="store_true",
-        help="Hide contribution grid/graph"
+        "--no-grid", action="store_true", help="Hide contribution grid/graph"
     )
 
     return parser.parse_args()
@@ -332,19 +304,23 @@ def _check_version_updates() -> None:
     """Check for and display available updates."""
     print(f"gitfetch version: {__version__}")
     import requests
+
     try:
         resp = requests.get(
-            "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
+            "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3
+        )
         if resp.status_code == 200:
             latest = resp.json()["tag_name"].lstrip("v")
             if latest != __version__:
-                print(f"\033[93mUpdate available: {latest}\n"
-                      + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                      + "Or update using your package manager:\n"
-                      + "\t\tbrew update && brew upgrade gitfetch\n"
-                      + "\t\tpip install --upgrade gitfetch\n"
-                      + "\t\tpacman -Syu gitfetch-python\n"
-                      + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
+                print(
+                    f"\033[93mUpdate available: {latest}\n"
+                    + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                    + "Or update using your package manager:\n"
+                    + "\t\tbrew update && brew upgrade gitfetch\n"
+                    + "\t\tpip install --upgrade gitfetch\n"
+                    + "\t\tpacman -Syu gitfetch-python\n"
+                    + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m"
+                )
             else:
                 print("You are using the latest version.")
         else:
@@ -353,8 +329,12 @@ def _check_version_updates() -> None:
         print("Could not check for updates.")
 
 
-def _handle_simulated_graph(args: argparse.Namespace, formatter: DisplayFormatter,
-                            config_manager: ConfigManager, cache_manager: CacheManager) -> int:
+def _handle_simulated_graph(
+    args: argparse.Namespace,
+    formatter: DisplayFormatter,
+    config_manager: ConfigManager,
+    cache_manager: CacheManager,
+) -> int:
     """
     Handle --text or --shape arguments to display simulated contribution graphs.
 
@@ -384,7 +364,10 @@ def _handle_simulated_graph(args: argparse.Namespace, formatter: DisplayFormatte
         error_msg = str(e)
         if "ValueError" in type(e).__name__:
             print(f"Invalid shape/text: {error_msg}", file=sys.stderr)
-            print("Hint: Shapes must be valid keys or text can only contain A-Z and spaces", file=sys.stderr)
+            print(
+                "Hint: Shapes must be valid keys or text can only contain A-Z and spaces",
+                file=sys.stderr,
+            )
         else:
             print(f"Error generating graph: {error_msg}", file=sys.stderr)
         return 1
@@ -394,33 +377,30 @@ def _handle_simulated_graph(args: argparse.Namespace, formatter: DisplayFormatte
     cached_user = None
     cached_stats = None
     if lookup_username:
-        cached_user = (
-            cache_manager.get_cached_user_data(lookup_username)
-            or cache_manager.get_stale_cached_user_data(lookup_username)
-        )
-        cached_stats = (
-            cache_manager.get_cached_stats(lookup_username)
-            or cache_manager.get_stale_cached_stats(lookup_username)
-        )
+        cached_user = cache_manager.get_cached_user_data(
+            lookup_username
+        ) or cache_manager.get_stale_cached_user_data(lookup_username)
+        cached_stats = cache_manager.get_cached_stats(
+            lookup_username
+        ) or cache_manager.get_stale_cached_stats(lookup_username)
 
     if cached_stats:
-        cached_stats['contribution_graph'] = weeks
+        cached_stats["contribution_graph"] = weeks
         stats = cached_stats
     else:
-        stats = {'contribution_graph': weeks}
+        stats = {"contribution_graph": weeks}
 
     if cached_user:
         user_data = cached_user
-        display_name = cached_user.get('name') or lookup_username
+        display_name = cached_user.get("name") or lookup_username
     else:
-        display_name = (
-            args.username
-            or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
+        display_name = args.username or (
+            args.text if args.text else " ".join(args.shape) if args.shape else None
         )
         user_data = {
-            'name': display_name,
-            'bio': '',
-            'website': '',
+            "name": display_name,
+            "bio": "",
+            "website": "",
         }
 
     if display_name is None:
@@ -431,18 +411,16 @@ def _handle_simulated_graph(args: argparse.Namespace, formatter: DisplayFormatte
     return 0
 
 
-def _get_username(args: argparse.Namespace, config_manager: ConfigManager, fetcher) -> Optional[str]:
+def _get_username(
+    args: argparse.Namespace, config_manager: ConfigManager, fetcher
+) -> Optional[str]:
     """
     Get username from args, config, or authenticated user.
 
     Returns:
         Username string or None if not found
     """
-    username = (
-        args.username
-        or config_manager.get_default_username()
-        or None
-    )
+    username = args.username or config_manager.get_default_username() or None
 
     if not username:
         try:
@@ -456,8 +434,14 @@ def _get_username(args: argparse.Namespace, config_manager: ConfigManager, fetch
     return username
 
 
-def _fetch_and_display_data(args: argparse.Namespace, username: str, config_manager: ConfigManager,
-                            cache_manager: CacheManager, fetcher, formatter: DisplayFormatter) -> int:
+def _fetch_and_display_data(
+    args: argparse.Namespace,
+    username: str,
+    config_manager: ConfigManager,
+    cache_manager: CacheManager,
+    fetcher,
+    formatter: DisplayFormatter,
+) -> int:
     """
     Fetch user data (with caching) and display results.
 
@@ -475,7 +459,9 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
     use_cache = not args.no_cache
 
     if use_cache:
-        user_data: Optional[dict[str, Any]] = cache_manager.get_cached_user_data(username)
+        user_data: Optional[dict[str, Any]] = cache_manager.get_cached_user_data(
+            username
+        )
         stats: Optional[dict[str, Any]] = cache_manager.get_cached_stats(username)
 
         # If fresh cache is available, just display
@@ -493,8 +479,13 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
             # Spawn background refresh process
             try:
                 proc = subprocess.Popen(
-                    [sys.executable, "-m", "gitfetch.cli",
-                        "--background-refresh", username],
+                    [
+                        sys.executable,
+                        "-m",
+                        "gitfetch.cli",
+                        "--background-refresh",
+                        username,
+                    ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     stdin=subprocess.DEVNULL,
@@ -515,17 +506,22 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
 
     user_data, stats = Spinner.run_with_spinner(
         f"Fetching data from {config_manager.get_provider_config().name if config_manager.get_provider_config() else 'provider'}...",
-        fetch_data
+        fetch_data,
     )
 
     formatter.display(username, user_data, stats, spaced=spaced)
     return 0
 
 
-def _handle_error(e: Exception, args: argparse.Namespace, config_manager: ConfigManager | None = None) -> None:
+def _handle_error(
+    e: Exception,
+    args: argparse.Namespace,
+    config_manager: Optional[ConfigManager] = None,
+) -> None:
     """Handle and display errors with helpful messages."""
     try:
         import traceback
+
         if args.debug:
             traceback.print_exc()
         else:
@@ -547,13 +543,21 @@ def _handle_error(e: Exception, args: argparse.Namespace, config_manager: Config
 
             if "auth" in error_msg.lower() or "token" in error_msg.lower():
                 print(f"Authentication Error: {error_msg}", file=sys.stderr)
-                print("Hint: Check your token or run 'gh auth login' for GitHub", file=sys.stderr)
+                print(
+                    "Hint: Check your token or run 'gh auth login' for GitHub",
+                    file=sys.stderr,
+                )
             elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
                 print(f"Timeout Error: {error_msg}", file=sys.stderr)
-                print("Hint: Check your network connection and try again", file=sys.stderr)
+                print(
+                    "Hint: Check your network connection and try again", file=sys.stderr
+                )
             elif "not found" in error_msg.lower():
                 print(f"User Not Found: {error_msg}", file=sys.stderr)
-                print("Hint: Verify the username is correct for the selected provider", file=sys.stderr)
+                print(
+                    "Hint: Verify the username is correct for the selected provider",
+                    file=sys.stderr,
+                )
             elif "api" in error_msg.lower():
                 print(f"API Error: {error_msg}", file=sys.stderr)
             else:
@@ -569,7 +573,8 @@ def main() -> int:
     # Check for --local flag
     if args.local:
         import os
-        if not os.path.exists('.git'):
+
+        if not os.path.exists(".git"):
             print("Error: --local requires .git folder", file=sys.stderr)
             return 1
 
@@ -654,13 +659,21 @@ def main() -> int:
     username = _get_username(args, config_manager, fetcher)
     if not username:
         print("Error: Username is required", file=sys.stderr)
-        print("Hint: Provide a username with --user or --username argument", file=sys.stderr)
-        print("      Or authenticate with 'gh auth login' for automatic detection", file=sys.stderr)
+        print(
+            "Hint: Provide a username with --user or --username argument",
+            file=sys.stderr,
+        )
+        print(
+            "      Or authenticate with 'gh auth login' for automatic detection",
+            file=sys.stderr,
+        )
         return 1
 
     # Fetch and display data
     try:
-        return _fetch_and_display_data(args, username, config_manager, cache_manager, fetcher, formatter)
+        return _fetch_and_display_data(
+            args, username, config_manager, cache_manager, fetcher, formatter
+        )
     except Exception as e:
         _handle_error(e, args, config_manager)
         return 1
@@ -679,10 +692,10 @@ def _prompt_username() -> Optional[str]:
 def _prompt_provider() -> Optional[str]:
     """Prompt user for git provider with interactive selection."""
     providers = [
-        ('github', 'GitHub'),
-        ('gitlab', 'GitLab'),
-        ('gitea', 'Gitea/Forgejo/Codeberg'),
-        ('sourcehut', 'Sourcehut')
+        ("github", "GitHub"),
+        ("gitlab", "GitLab"),
+        ("gitea", "Gitea/Forgejo/Codeberg"),
+        ("sourcehut", "Sourcehut"),
     ]
 
     selected = 0
@@ -705,9 +718,9 @@ def _prompt_provider() -> Optional[str]:
             # Read key
             key = readchar.readkey()
 
-            if key == readchar.key.UP or key == 'k':
+            if key == readchar.key.UP or key == "k":
                 selected = (selected - 1) % len(providers)
-            elif key == readchar.key.DOWN or key == 'j':
+            elif key == readchar.key.DOWN or key == "j":
                 selected = (selected + 1) % len(providers)
             elif key == readchar.key.ENTER:
                 print()  # New line after selection
@@ -721,10 +734,18 @@ def _prompt_provider() -> Optional[str]:
 # Provider registry pattern - maps provider names to their fetcher classes
 # Lazy imports to avoid circular dependencies
 _FETCHER_REGISTRY = {
-    'github': lambda token: __import__('fetcher', fromlist=['GitHubFetcher']).GitHubFetcher(token),
-    'gitlab': lambda base_url, token: __import__('fetcher', fromlist=['GitLabFetcher']).GitLabFetcher(base_url, token),
-    'gitea': lambda base_url, token: __import__('fetcher', fromlist=['GiteaFetcher']).GiteaFetcher(base_url, token),
-    'sourcehut': lambda base_url, token: __import__('fetcher', fromlist=['SourcehutFetcher']).SourcehutFetcher(base_url, token),
+    "github": lambda token: __import__(
+        "gitfetch.fetcher", fromlist=["GitHubFetcher"]
+    ).GitHubFetcher(token),
+    "gitlab": lambda base_url, token: __import__(
+        "gitfetch.fetcher", fromlist=["GitLabFetcher"]
+    ).GitLabFetcher(base_url, token),
+    "gitea": lambda base_url, token: __import__(
+        "gitfetch.fetcher", fromlist=["GiteaFetcher"]
+    ).GiteaFetcher(base_url, token),
+    "sourcehut": lambda base_url, token: __import__(
+        "gitfetch.fetcher", fromlist=["SourcehutFetcher"]
+    ).SourcehutFetcher(base_url, token),
 }
 
 
@@ -746,14 +767,13 @@ def _create_fetcher(provider: str, base_url: str, token: Optional[str] = None):
     fetcher_factory = _FETCHER_REGISTRY.get(provider)
 
     if not fetcher_factory:
-        supported = ', '.join(_FETCHER_REGISTRY.keys())
+        supported = ", ".join(_FETCHER_REGISTRY.keys())
         raise ValueError(
-            f"Unsupported provider: {provider}. "
-            f"Supported providers: {supported}"
+            f"Unsupported provider: {provider}. Supported providers: {supported}"
         )
 
     # GitHub fetcher only takes token, others take (base_url, token)
-    if provider == 'github':
+    if provider == "github":
         return fetcher_factory(token)
     else:
         return fetcher_factory(base_url, token)
@@ -777,31 +797,31 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             return False
 
         # Determine URL for provider
-        if provider == 'github':
-            url = PROVIDER_DEFAULT_URLS.get('github', 'https://api.github.com')
-        elif provider == 'gitlab':
-            url = PROVIDER_DEFAULT_URLS.get('gitlab', 'https://gitlab.com')
-        elif provider == 'gitea':
+        if provider == "github":
+            url = PROVIDER_DEFAULT_URLS.get("github", "https://api.github.com")
+        elif provider == "gitlab":
+            url = PROVIDER_DEFAULT_URLS.get("gitlab", "https://gitlab.com")
+        elif provider == "gitea":
             url = input("Enter Gitea/Forgejo/Codeberg URL: ").strip()
             if not url:
                 print("Provider URL required", file=sys.stderr)
                 return False
-        elif provider == 'sourcehut':
-            url = PROVIDER_DEFAULT_URLS.get('sourcehut', 'https://git.sr.ht')
+        elif provider == "sourcehut":
+            url = PROVIDER_DEFAULT_URLS.get("sourcehut", "https://git.sr.ht")
         else:
             print(f"Unsupported provider: {provider}", file=sys.stderr)
             return False
 
         # Ask for token (optional - only for extra rate limits)
-        token = ''
-        env_var = PROVIDER_ENV_VARS.get(provider, '')
-        
+        token = ""
+        env_var = PROVIDER_ENV_VARS.get(provider, "")
+
         # Make it clear CLI is required, token is optional for rate limits
-        if provider in ['github', 'gitlab']:
-            cli_name = 'gh' if provider == 'github' else 'glab'
+        if provider in ["github", "gitlab"]:
+            cli_name = "gh" if provider == "github" else "glab"
             print(f"\nNote: {cli_name} CLI is required for authentication.")
             print(f"Token is optional but increases rate limits.\n")
-        
+
         token_msg = f"Enter your {provider} personal access token"
         token_msg += f"\n(optional - for higher rate limits, press Enter to skip"
         if env_var:
@@ -815,9 +835,9 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         # Create provider config
         provider_config = ProviderConfig(
             name=provider,
-            username='',  # Will be set after fetcher auth
+            username="",  # Will be set after fetcher auth
             url=url,
-            token=token
+            token=token,
         )
 
         # Create fetcher to get authenticated user
@@ -832,9 +852,9 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             provider_config.username = username
         except Exception as e:
             print(f"Could not get authenticated user: {e}")
-            if provider == 'github':
+            if provider == "github":
                 print("Please install gh CLI and run: gh auth login")
-            elif provider == 'gitlab':
+            elif provider == "gitlab":
                 print("Please install glab CLI and run: glab auth login")
             else:
                 print("Please ensure you have a valid token configured")
