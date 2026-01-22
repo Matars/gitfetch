@@ -8,7 +8,9 @@ import sys
 import subprocess
 import threading
 import itertools
-from typing import Optional, Callable, Any
+import signal
+import atexit
+from typing import Optional, Callable, Any, List
 
 import readchar
 
@@ -19,6 +21,48 @@ from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 from . import __version__
 
 logger = logging.getLogger(__name__)
+
+# Global tracking for cleanup
+_active_spinners: List['Spinner'] = []
+_background_processes: List[subprocess.Popen] = []
+_cache_manager_instance: Optional[CacheManager] = None
+
+
+def _cleanup_resources() -> None:
+    """Cleanup all active resources on exit or interruption."""
+    # Stop all active spinners
+    for spinner in _active_spinners[:]:  # Copy list to avoid modification during iteration
+        try:
+            spinner.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping spinner: {e}")
+
+    # Terminate background processes
+    for proc in _background_processes[:]:
+        try:
+            if proc.poll() is None:  # Process still running
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()  # Force kill if terminate didn't work
+        except Exception as e:
+            logger.warning(f"Error terminating background process: {e}")
+
+    # No need to explicitly close cache connections - context managers handle it
+
+
+def _signal_handler(signum, frame) -> None:
+    """Handle interrupt signals gracefully."""
+    print("\n\nCleaning up...", file=sys.stderr)
+    _cleanup_resources()
+    sys.exit(130)  # Standard exit code for SIGINT
+
+
+# Register cleanup handlers
+atexit.register(_cleanup_resources)
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
 
 
 class Spinner:
@@ -55,6 +99,7 @@ class Spinner:
         self._stop_event.clear()
         self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
         self._spinner_thread.start()
+        _active_spinners.append(self)
         return self
 
     def stop(self) -> None:
@@ -63,6 +108,8 @@ class Spinner:
             self._stop_event.set()
             self._spinner_thread.join(timeout=0.5)
             self._spinner_thread = None
+        if self in _active_spinners:
+            _active_spinners.remove(self)
 
     def __enter__(self):
         """Context manager entry."""
@@ -444,7 +491,7 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
 
             # Spawn background refresh process
             try:
-                subprocess.Popen(
+                proc = subprocess.Popen(
                     [sys.executable, "-m", "gitfetch.cli",
                         "--background-refresh", username],
                     stdout=subprocess.DEVNULL,
@@ -452,6 +499,7 @@ def _fetch_and_display_data(args: argparse.Namespace, username: str, config_mana
                     stdin=subprocess.DEVNULL,
                     start_new_session=True,
                 )
+                _background_processes.append(proc)
             except Exception as e:
                 logger.warning(f"Background refresh subprocess spawn failed: {e}")
 
@@ -500,111 +548,106 @@ def _handle_error(e: Exception, args: argparse.Namespace) -> None:
 
 def main() -> int:
     """Main entry point for gitfetch CLI."""
-    try:
-        args = parse_args()
+    args = parse_args()
 
-        # Check for --local flag
-        if args.local:
-            import os
-            if not os.path.exists('.git'):
-                print("Error: --local requires .git folder", file=sys.stderr)
-                return 1
+    # Check for --local flag
+    if args.local:
+        import os
+        if not os.path.exists('.git'):
+            print("Error: --local requires .git folder", file=sys.stderr)
+            return 1
 
-        # Handle background refresh mode (hidden feature)
-        if args.background_refresh:
-            _background_refresh_cache_subprocess(args.background_refresh)
-            return 0
+    # Handle background refresh mode (hidden feature)
+    if args.background_refresh:
+        _background_refresh_cache_subprocess(args.background_refresh)
+        return 0
 
-        # Handle --change-provider
-        if args.change_provider:
-            config_manager = ConfigManager()
-            print("🔄 Changing git provider...\n")
-            if not _initialize_gitfetch(config_manager):
-                print("Error: Failed to change provider", file=sys.stderr)
-                return 1
-            print("\n✅ Provider changed successfully!")
-            return 0
-
-        # Handle --version
-        if args.version:
-            _check_version_updates()
-            return 0
-
-        # Initialize config
+    # Handle --change-provider
+    if args.change_provider:
         config_manager = ConfigManager()
-
-        # Check if gitfetch is initialized
-        if not config_manager.is_initialized():
-            print("🚀 Welcome to gitfetch! Let's set up your configuration.\n")
-            if not _initialize_gitfetch(config_manager):
-                print("Error: Initialization failed", file=sys.stderr)
-                return 1
-            print("\n✅ Configuration saved! You can now use gitfetch.\n")
-
-        # Initialize components
-        cache_expiry = config_manager.get_cache_expiry_minutes()
-        cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
-
-        provider_config = config_manager.get_provider_config()
-        if not provider_config:
-            print("Provider not set. Run: gitfetch --change-provider")
+        print("🔄 Changing git provider...\n")
+        if not _initialize_gitfetch(config_manager):
+            print("Error: Failed to change provider", file=sys.stderr)
             return 1
-        if not provider_config.url:
-            print("Provider URL not set. Run: gitfetch --change-provider")
+        print("\n✅ Provider changed successfully!")
+        return 0
+
+    # Handle --version
+    if args.version:
+        _check_version_updates()
+        return 0
+
+    # Initialize config
+    config_manager = ConfigManager()
+
+    # Check if gitfetch is initialized
+    if not config_manager.is_initialized():
+        print("🚀 Welcome to gitfetch! Let's set up your configuration.\n")
+        if not _initialize_gitfetch(config_manager):
+            print("Error: Initialization failed", file=sys.stderr)
             return 1
+        print("\n✅ Configuration saved! You can now use gitfetch.\n")
 
-        fetcher = _create_fetcher(
-            provider_config.name, provider_config.url, provider_config.token or None
-        )
+    # Initialize components
+    cache_expiry = config_manager.get_cache_expiry_minutes()
+    cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
 
-        # Create formatter
-        formatter = DisplayFormatter(
-            config_manager,
-            args.custom_box,
-            not args.no_date,
-            args.graph_only,
-            not args.no_achievements,
-            not args.no_languages,
-            not args.no_issues,
-            not args.no_pr,
-            not args.no_account,
-            not args.no_grid,
-            args.width,
-            args.height,
-            args.graph_timeline,
-            args.local,
-            args.shape,
-            args.text,
-        )
+    provider_config = config_manager.get_provider_config()
+    if not provider_config:
+        print("Provider not set. Run: gitfetch --change-provider")
+        return 1
+    if not provider_config.url:
+        print("Provider URL not set. Run: gitfetch --change-provider")
+        return 1
 
-        # Handle simulated graphs (--text or --shape)
-        if args.text or args.shape:
-            return _handle_simulated_graph(args, formatter, config_manager, cache_manager)
+    fetcher = _create_fetcher(
+        provider_config.name, provider_config.url, provider_config.token or None
+    )
 
-        # Handle cache clearing
-        if args.clear_cache:
-            cache_manager.clear()
-            print("Cache cleared successfully!")
-            return 0
+    # Create formatter
+    formatter = DisplayFormatter(
+        config_manager,
+        args.custom_box,
+        not args.no_date,
+        args.graph_only,
+        not args.no_achievements,
+        not args.no_languages,
+        not args.no_issues,
+        not args.no_pr,
+        not args.no_account,
+        not args.no_grid,
+        args.width,
+        args.height,
+        args.graph_timeline,
+        args.local,
+        args.shape,
+        args.text,
+    )
 
-        # Get username
-        username = _get_username(args, config_manager, fetcher)
-        if not username:
-            print("Error: Username is required", file=sys.stderr)
-            print("Hint: Provide a username with --user or --username argument", file=sys.stderr)
-            print("      Or authenticate with 'gh auth login' for automatic detection", file=sys.stderr)
-            return 1
+    # Handle simulated graphs (--text or --shape)
+    if args.text or args.shape:
+        return _handle_simulated_graph(args, formatter, config_manager, cache_manager)
 
-        # Fetch and display data
-        try:
-            return _fetch_and_display_data(args, username, config_manager, cache_manager, fetcher, formatter)
-        except Exception as e:
-            _handle_error(e, args)
-            return 1
+    # Handle cache clearing
+    if args.clear_cache:
+        cache_manager.clear()
+        print("Cache cleared successfully!")
+        return 0
 
-    except KeyboardInterrupt:
-        print("\nInterrupted by user.", file=sys.stderr)
-        return 130
+    # Get username
+    username = _get_username(args, config_manager, fetcher)
+    if not username:
+        print("Error: Username is required", file=sys.stderr)
+        print("Hint: Provide a username with --user or --username argument", file=sys.stderr)
+        print("      Or authenticate with 'gh auth login' for automatic detection", file=sys.stderr)
+        return 1
+
+    # Fetch and display data
+    try:
+        return _fetch_and_display_data(args, username, config_manager, cache_manager, fetcher, formatter)
+    except Exception as e:
+        _handle_error(e, args)
+        return 1
 
 
 def _prompt_username() -> Optional[str]:
