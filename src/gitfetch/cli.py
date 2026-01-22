@@ -6,7 +6,9 @@ import argparse
 import logging
 import sys
 import subprocess
-from typing import Optional
+import threading
+import itertools
+from typing import Optional, Callable, Any
 
 import readchar
 
@@ -17,6 +19,75 @@ from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 from . import __version__
 
 logger = logging.getLogger(__name__)
+
+
+class Spinner:
+    """A simple terminal spinner for showing loading progress."""
+
+    SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+    def __init__(self, message: str = "Loading..."):
+        """
+        Initialize the spinner.
+
+        Args:
+            message: Message to display next to the spinner
+        """
+        self.message = message
+        self._stop_event = threading.Event()
+        self._spinner_thread: Optional[threading.Thread] = None
+
+    def _spin(self) -> None:
+        """Run the spinner animation in a separate thread."""
+        for frame in itertools.cycle(self.SPINNER_FRAMES):
+            if self._stop_event.is_set():
+                break
+            sys.stdout.write(f'\r{frame} {self.message}')
+            sys.stdout.flush()
+            self._stop_event.wait(0.1)
+
+        # Clear the spinner line when done
+        sys.stdout.write('\r' + ' ' * (len(self.message) + 3) + '\r')
+        sys.stdout.flush()
+
+    def start(self) -> 'Spinner':
+        """Start the spinner animation."""
+        self._stop_event.clear()
+        self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
+        self._spinner_thread.start()
+        return self
+
+    def stop(self) -> None:
+        """Stop the spinner animation."""
+        if self._spinner_thread:
+            self._stop_event.set()
+            self._spinner_thread.join(timeout=0.5)
+            self._spinner_thread = None
+
+    def __enter__(self):
+        """Context manager entry."""
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
+        return False
+
+    @staticmethod
+    def run_with_spinner(message: str, func: Callable[[], Any]) -> Any:
+        """
+        Run a function with a spinner while it executes.
+
+        Args:
+            message: Message to display while spinning
+            func: Function to execute
+
+        Returns:
+            Result of the function
+        """
+        with Spinner(message):
+            return func()
 
 
 def _background_refresh_cache_subprocess(username: str) -> None:
@@ -209,6 +280,224 @@ Supports GitHub, GitLab, Gitea, and Sourcehut.""",
     return parser.parse_args()
 
 
+def _check_version_updates() -> None:
+    """Check for and display available updates."""
+    print(f"gitfetch version: {__version__}")
+    import requests
+    try:
+        resp = requests.get(
+            "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
+        if resp.status_code == 200:
+            latest = resp.json()["tag_name"].lstrip("v")
+            if latest != __version__:
+                print(f"\033[93mUpdate available: {latest}\n"
+                      + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                      + "Or update using your package manager:\n"
+                      + "\t\tbrew update && brew upgrade gitfetch\n"
+                      + "\t\tpip install --upgrade gitfetch\n"
+                      + "\t\tpacman -Syu gitfetch-python\n"
+                      + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
+            else:
+                print("You are using the latest version.")
+        else:
+            print("Could not check for updates.")
+    except Exception:
+        print("Could not check for updates.")
+
+
+def _handle_simulated_graph(args: argparse.Namespace, formatter: DisplayFormatter,
+                            config_manager: ConfigManager, cache_manager: CacheManager) -> int:
+    """
+    Handle --text or --shape arguments to display simulated contribution graphs.
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    if args.text and args.shape:
+        print("Error: --text and --shape cannot be used together", file=sys.stderr)
+        return 1
+
+    # Determine spaced setting
+    if args.spaced:
+        spaced = True
+    elif args.not_spaced:
+        spaced = False
+    else:
+        spaced = True
+
+    try:
+        if args.text:
+            text_grid = formatter._text_to_grid(args.text)
+            weeks = formatter._generate_weeks_from_text_grid(text_grid)
+        else:  # args.shape
+            shape_grid = formatter._shape_to_grid(args.shape)
+            weeks = formatter._generate_weeks_from_text_grid(shape_grid)
+    except Exception as e:
+        error_msg = str(e)
+        if "ValueError" in type(e).__name__:
+            print(f"Invalid shape/text: {error_msg}", file=sys.stderr)
+            print("Hint: Shapes must be valid keys or text can only contain A-Z and spaces", file=sys.stderr)
+        else:
+            print(f"Error generating graph: {error_msg}", file=sys.stderr)
+        return 1
+
+    # Try to reuse cached user metadata/stats when available
+    lookup_username = args.username or config_manager.get_default_username()
+    cached_user = None
+    cached_stats = None
+    if lookup_username:
+        cached_user = (
+            cache_manager.get_cached_user_data(lookup_username)
+            or cache_manager.get_stale_cached_user_data(lookup_username)
+        )
+        cached_stats = (
+            cache_manager.get_cached_stats(lookup_username)
+            or cache_manager.get_stale_cached_stats(lookup_username)
+        )
+
+    if cached_stats:
+        cached_stats['contribution_graph'] = weeks
+        stats = cached_stats
+    else:
+        stats = {'contribution_graph': weeks}
+
+    if cached_user:
+        user_data = cached_user
+        display_name = cached_user.get('name') or lookup_username
+    else:
+        display_name = (
+            args.username
+            or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
+        )
+        user_data = {
+            'name': display_name,
+            'bio': '',
+            'website': '',
+        }
+
+    if display_name is None:
+        print("display name not set")
+        return 1
+
+    formatter.display(display_name, user_data, stats, spaced=spaced)
+    return 0
+
+
+def _get_username(args: argparse.Namespace, config_manager: ConfigManager, fetcher) -> Optional[str]:
+    """
+    Get username from args, config, or authenticated user.
+
+    Returns:
+        Username string or None if not found
+    """
+    username = (
+        args.username
+        or config_manager.get_default_username()
+        or None
+    )
+
+    if not username:
+        try:
+            username = fetcher.get_authenticated_user()
+            config_manager.set_default_username(username)
+            config_manager.save()
+        except Exception as e:
+            logger.warning(f"Could not get authenticated user: {e}")
+            username = _prompt_username()
+
+    return username
+
+
+def _fetch_and_display_data(args: argparse.Namespace, username: str, config_manager: ConfigManager,
+                            cache_manager: CacheManager, fetcher, formatter: DisplayFormatter) -> int:
+    """
+    Fetch user data (with caching) and display results.
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    # Determine spaced setting
+    if args.spaced:
+        spaced = True
+    elif args.not_spaced:
+        spaced = False
+    else:
+        spaced = True
+
+    use_cache = not args.no_cache
+
+    if use_cache:
+        user_data: Optional[dict[str, Any]] = cache_manager.get_cached_user_data(username)
+        stats: Optional[dict[str, Any]] = cache_manager.get_cached_stats(username)
+
+        # If fresh cache is available, just display
+        if user_data is not None and stats is not None:
+            formatter.display(username, user_data, stats, spaced=spaced)
+            return 0
+
+        # Try stale cache for immediate display
+        stale_user_data = cache_manager.get_stale_cached_user_data(username)
+        stale_stats = cache_manager.get_stale_cached_stats(username)
+
+        if stale_user_data is not None and stale_stats is not None:
+            formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
+
+            # Spawn background refresh process
+            try:
+                subprocess.Popen(
+                    [sys.executable, "-m", "gitfetch.cli",
+                        "--background-refresh", username],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            except Exception as e:
+                logger.warning(f"Background refresh subprocess spawn failed: {e}")
+
+            return 0
+
+    # Either no_cache or no valid cache so fetch fresh data
+    def fetch_data():
+        user_data = fetcher.fetch_user_data(username)
+        stats = fetcher.fetch_user_stats(username, user_data)
+        cache_manager.cache_user_data(username, user_data, stats)
+        return user_data, stats
+
+    user_data, stats = Spinner.run_with_spinner(
+        f"Fetching data from {config_manager.get_provider_config().name if config_manager.get_provider_config() else 'provider'}...",
+        fetch_data
+    )
+
+    formatter.display(username, user_data, stats, spaced=spaced)
+    return 0
+
+
+def _handle_error(e: Exception, args: argparse.Namespace) -> None:
+    """Handle and display errors with helpful messages."""
+    try:
+        import traceback
+        if args.debug:
+            traceback.print_exc()
+        else:
+            error_msg = str(e)
+            if "auth" in error_msg.lower() or "token" in error_msg.lower():
+                print(f"Authentication Error: {error_msg}", file=sys.stderr)
+                print("Hint: Check your token or run 'gh auth login' for GitHub", file=sys.stderr)
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                print(f"Timeout Error: {error_msg}", file=sys.stderr)
+                print("Hint: Check your network connection and try again", file=sys.stderr)
+            elif "not found" in error_msg.lower():
+                print(f"User Not Found: {error_msg}", file=sys.stderr)
+                print("Hint: Verify the username is correct for the selected provider", file=sys.stderr)
+            elif "api" in error_msg.lower():
+                print(f"API Error: {error_msg}", file=sys.stderr)
+            else:
+                print(f"Error: {error_msg}", file=sys.stderr)
+    except Exception:
+        print(f"Error: {e}", file=sys.stderr)
+
+
 def main() -> int:
     """Main entry point for gitfetch CLI."""
     try:
@@ -226,6 +515,7 @@ def main() -> int:
             _background_refresh_cache_subprocess(args.background_refresh)
             return 0
 
+        # Handle --change-provider
         if args.change_provider:
             config_manager = ConfigManager()
             print("🔄 Changing git provider...\n")
@@ -235,29 +525,9 @@ def main() -> int:
             print("\n✅ Provider changed successfully!")
             return 0
 
+        # Handle --version
         if args.version:
-            print(f"gitfetch version: {__version__}")
-            # Check for updates from GitHub
-            import requests
-            try:
-                resp = requests.get(
-                    "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
-                if resp.status_code == 200:
-                    latest = resp.json()["tag_name"].lstrip("v")
-                    if latest != __version__:
-                        print(f"\033[93mUpdate available: {latest}\n"
-                              + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                              + "Or update using your package manager:\n"
-                              + "\t\tbrew update && brew upgrade gitfetch\n"
-                              + "\t\tpip install --upgrade gitfetch\n"
-                              + "\t\tpacman -Syu gitfetch-python\n"
-                              + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
-                    else:
-                        print("You are using the latest version.")
-                else:
-                    print("Could not check for updates.")
-            except Exception:
-                print("Could not check for updates.")
+            _check_version_updates()
             return 0
 
         # Initialize config
@@ -287,16 +557,11 @@ def main() -> int:
             provider_config.name, provider_config.url, provider_config.token or None
         )
 
-        # Handle custom box character
-        custom_box = args.custom_box
-
-        # Handle show date setting
-        show_date = not args.no_date
-
+        # Create formatter
         formatter = DisplayFormatter(
             config_manager,
-            custom_box,
-            show_date,
+            args.custom_box,
+            not args.no_date,
             args.graph_only,
             not args.no_achievements,
             not args.no_languages,
@@ -311,84 +576,10 @@ def main() -> int:
             args.shape,
             args.text,
         )
-        if args.spaced:
-            spaced = True
-        elif args.not_spaced:
-            spaced = False
-        else:
-            spaced = True
 
-        # If --text or --shape provided, simulate contribution graph
-        # and reuse cached metadata (issues, PRs, languages, achievements)
+        # Handle simulated graphs (--text or --shape)
         if args.text or args.shape:
-            if args.text and args.shape:
-                print("Error: --text and --shape cannot be used together",
-                      file=sys.stderr)
-                return 1
-
-            try:
-                if args.text:
-                    # Build a fake contribution_graph from the text
-                    text_grid = formatter._text_to_grid(args.text)
-                    weeks = formatter._generate_weeks_from_text_grid(text_grid)
-                else:  # args.shape
-                    # Use the predefined shape pattern (shape may be a list)
-                    shape_grid = formatter._shape_to_grid(args.shape)
-                    weeks = formatter._generate_weeks_from_text_grid(
-                        shape_grid)
-            except Exception as e:
-                print(f"Error generating graph: {e}", file=sys.stderr)
-                return 1
-
-            # Try to reuse cached user metadata/stats when available
-            lookup_username = args.username or config_manager.get_default_username()
-            cached_user = None
-            cached_stats = None
-            if lookup_username:
-                # Prefer fresh cache, but fall back to stale cache so
-                # simulated graphs can still show metadata like streaks
-                cached_user = (
-                    cache_manager.get_cached_user_data(lookup_username)
-                    or cache_manager.get_stale_cached_user_data(lookup_username)
-                )
-                cached_stats = (
-                    cache_manager.get_cached_stats(lookup_username)
-                    or cache_manager.get_stale_cached_stats(lookup_username)
-                )
-
-            if cached_stats:
-                # Replace only the contribution graph with our simulated weeks
-                cached_stats['contribution_graph'] = weeks
-                stats = cached_stats
-            else:
-                stats = {'contribution_graph': weeks}
-
-            if cached_user:
-                user_data = cached_user
-                display_name = cached_user.get('name') or lookup_username
-            else:
-                # Minimal fallback user_data for display purposes
-                display_name = (
-                    args.username
-                    or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
-                )
-                user_data = {
-                    'name': display_name,
-                    'bio': '',
-                    'website': '',
-                }
-
-            if display_name == None:
-                print("display name not set")
-                return 1
-
-            formatter.display(
-                display_name,
-                user_data,
-                stats,
-                spaced=spaced,
-            )
-            return 0
+            return _handle_simulated_graph(args, formatter, config_manager, cache_manager)
 
         # Handle cache clearing
         if args.clear_cache:
@@ -397,88 +588,18 @@ def main() -> int:
             return 0
 
         # Get username
-        username = (
-            args.username
-            or config_manager.get_default_username()
-            or None
-        )
-
-        if not username:
-            # Fall back to authenticated user
-            try:
-                username = fetcher.get_authenticated_user()
-                # Save as default for future use
-                config_manager.set_default_username(username)
-                config_manager.save()
-            except Exception:
-                username = _prompt_username()
-
+        username = _get_username(args, config_manager, fetcher)
         if not username:
             print("Error: Username is required", file=sys.stderr)
+            print("Hint: Provide a username with --user or --username argument", file=sys.stderr)
+            print("      Or authenticate with 'gh auth login' for automatic detection", file=sys.stderr)
             return 1
 
-        # Fetch data (with or without cache)
+        # Fetch and display data
         try:
-            use_cache = not args.no_cache
-
-            if use_cache:
-                user_data = cache_manager.get_cached_user_data(username)
-                stats = cache_manager.get_cached_stats(username)
-
-                # If fresh cache is available, just display
-                if user_data is not None and stats is not None:
-                    formatter.display(username, user_data,
-                                      stats, spaced=spaced)
-                    return 0
-
-                # Try stale cache for immediate display
-                stale_user_data = cache_manager.get_stale_cached_user_data(
-                    username)
-                stale_stats = cache_manager.get_stale_cached_stats(username)
-
-                if stale_user_data is not None and stale_stats is not None:
-                    formatter.display(username, stale_user_data,
-                                      stale_stats, spaced=spaced)
-
-                    # Spawn a completely independent background process
-                    # Spawn background refresh process
-                    try:
-                        subprocess.Popen(
-                            [sys.executable, "-m", "gitfetch.cli",
-                                "--background-refresh", username],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL,
-                            start_new_session=True,  # detach from parent
-                        )
-                    except Exception as e:
-                        # Log but don't fail - stale data was already displayed
-                        logger.warning(f"Background refresh subprocess spawn failed: {e}")
-
-                    return 0
-
-                # No cache at all so fall through to fresh fetch
-
-            # Either no_cache or no valid cache so just fetch fresh data
-            user_data = fetcher.fetch_user_data(username)
-            stats = fetcher.fetch_user_stats(username, user_data)
-            cache_manager.cache_user_data(username, user_data, stats)
-
-            # Display the results
-            formatter.display(username, user_data, stats, spaced=spaced)
-            return 0
-
+            return _fetch_and_display_data(args, username, config_manager, cache_manager, fetcher, formatter)
         except Exception as e:
-            # When debugging, print full traceback to help diagnose issues
-            try:
-                import traceback
-                if args.debug:
-                    traceback.print_exc()
-                else:
-                    print(f"Error: {e}", file=sys.stderr)
-            except Exception:
-                # Fallback to simple message if traceback printing fails
-                print(f"Error: {e}", file=sys.stderr)
+            _handle_error(e, args)
             return 1
 
     except KeyboardInterrupt:
