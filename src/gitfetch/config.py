@@ -419,3 +419,51 @@ class ConfigManager:
                     for key, value in colors_section.items():
                         f.write(f"{key:<{max_key_length}} = {value}\n")
                 f.write("\n")
+
+    def validate_config(self) -> list[str]:
+        """
+        Validate configuration and return list of warnings/errors.
+
+        Returns:
+            List of validation warning messages (empty if valid)
+        """
+        warnings = []
+
+        # Validate cache expiry minutes (should be 1-1440, i.e., 1 minute to 1 day)
+        try:
+            cache_minutes = self.get_cache_expiry_minutes()
+            if cache_minutes < 1:
+                warnings.append("cache_expiry_minutes must be at least 1 minute")
+            elif cache_minutes > 1440:
+                warnings.append("cache_expiry_minutes should not exceed 1440 (24 hours)")
+        except (ValueError, TypeError):
+            warnings.append("cache_expiry_minutes has invalid value")
+
+        # Validate color values
+        try:
+            colors = self.get_colors()
+            for color_name, color_value in colors.items():
+                # Check if it's a valid hex code
+                if color_value.startswith('#'):
+                    if len(color_value) not in (7, 4):  # #RGB or #RRGGBB
+                        warnings.append(f"Invalid hex color format: {color_name} = {color_value}")
+                else:
+                    # Check if it's a valid named color
+                    if color_value not in webcolors.names():
+                        warnings.append(f"Unknown color name: {color_name} = {color_value}")
+        except Exception:
+            warnings.append("Error validating color configuration")
+
+        # Validate provider setting
+        provider = self.get_provider()
+        valid_providers = ['github', 'gitlab', 'gitea', 'sourcehut', '']
+        if provider not in valid_providers:
+            provider_list = ', '.join(valid_providers[:-1])
+            warnings.append(f"Invalid provider: {provider}. Must be one of {provider_list} or sourcehut")
+
+        # Validate provider URL if set
+        provider_url = self.get_provider_url()
+        if provider_url and not (provider_url.startswith('http://') or provider_url.startswith('https://')):
+            warnings.append(f"provider_url must start with http:// or https://")
+
+        return warnings
