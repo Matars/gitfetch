@@ -6,9 +6,10 @@ the application, providing better error handling and user experience.
 """
 
 import re
+from typing import List, Optional
 
 
-def redact_sensitive_info(text: str, tokens: list[str] | None = None) -> str:
+def redact_sensitive_info(text: str, tokens: Optional[List[str]] = None) -> str:
     """
     Redact sensitive information (tokens, passwords) from error messages.
 
@@ -37,9 +38,12 @@ def redact_sensitive_info(text: str, tokens: list[str] | None = None) -> str:
     # Redact common sensitive patterns in URLs and headers
     # Pattern: Bearer/GitHub/Basic tokens in URLs or headers
     patterns_to_redact = [
-        (r'(Bearer|GitHub|token|Basic)\s+[a-zA-Z0-9_\-\.]{20,}', r'\1 ****'),
-        (r'authorization["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}', 'authorization: ****'),
-        (r'token["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}', 'token: ****'),
+        (r"(Bearer|GitHub|token|Basic)\s+[a-zA-Z0-9_\-\.]{20,}", r"\1 ****"),
+        (
+            r'authorization["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}',
+            "authorization: ****",
+        ),
+        (r'token["\']?\s*:\s*["\']?[a-zA-Z0-9_\-\.]{20,}', "token: ****"),
     ]
 
     for pattern, replacement in patterns_to_redact:

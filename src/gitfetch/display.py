@@ -14,11 +14,12 @@ from .calculations import calculate_total_contributions, get_contribution_color_
 import subprocess
 import webcolors
 
+
 def hex_to_ansi(hex_color: str, background: bool = False) -> str:
     """Convert hex color to ANSI escape code."""
-    if not hex_color.startswith('#'):
+    if not hex_color.startswith("#"):
         return hex_color  # Already ANSI or invalid
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
         return hex_color
     try:
@@ -26,9 +27,9 @@ def hex_to_ansi(hex_color: str, background: bool = False) -> str:
         g = int(hex_color[2:4], 16)
         b = int(hex_color[4:6], 16)
         if background:
-            return f'\033[48;2;{r};{g};{b}m'
+            return f"\033[48;2;{r};{g};{b}m"
         else:
-            return f'\033[38;2;{r};{g};{b}m'
+            return f"\033[38;2;{r};{g};{b}m"
     except ValueError:
         return hex_color
 
@@ -36,23 +37,26 @@ def hex_to_ansi(hex_color: str, background: bool = False) -> str:
 class DisplayFormatter:
     """Formats and displays git provider stats in a neofetch-style layout."""
 
-    def __init__(self, config_manager: ConfigManager,
-                 custom_box: Optional[str] = None,
-                 show_date: Optional[bool] = None,
-                 graph_only: bool = False,
-                 show_achievements: bool = True,
-                 show_languages: bool = True,
-                 show_issues: bool = True,
-                 show_pr: bool = True,
-                 show_account: bool = True,
-                 show_grid: bool = True,
-                 custom_width: Optional[int] = None,
-                 custom_height: Optional[int] = None,
-                 graph_timeline: bool = False,
-                 local_mode: bool = False,
-                 shape: Optional[list] = None,
-                 text: Optional[str] = None,
-                 text_patterns: Optional[dict] = None):
+    def __init__(
+        self,
+        config_manager: ConfigManager,
+        custom_box: Optional[str] = None,
+        show_date: Optional[bool] = None,
+        graph_only: bool = False,
+        show_achievements: bool = True,
+        show_languages: bool = True,
+        show_issues: bool = True,
+        show_pr: bool = True,
+        show_account: bool = True,
+        show_grid: bool = True,
+        custom_width: Optional[int] = None,
+        custom_height: Optional[int] = None,
+        graph_timeline: bool = False,
+        local_mode: bool = False,
+        shape: Optional[list] = None,
+        text: Optional[str] = None,
+        text_patterns: Optional[dict] = None,
+    ):
         """Initialize the display formatter."""
         terminal_size = shutil.get_terminal_size()
         self.terminal_width = terminal_size.columns
@@ -63,8 +67,9 @@ class DisplayFormatter:
         self.colors = config_manager.get_ansi_colors()
         self.hex_colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
-        self.show_date = (show_date if show_date is not None
-                          else config_manager.get_show_date())
+        self.show_date = (
+            show_date if show_date is not None else config_manager.get_show_date()
+        )
         self.graph_only = graph_only
         self.show_achievements = show_achievements
         self.show_languages = show_languages
@@ -87,8 +92,13 @@ class DisplayFormatter:
         self.shape = shape
         self.suppress_month_line = bool(self.text) or bool(self.shape)
 
-    def display(self, username: str, user_data: Dict[str, Any],
-                stats: Dict[str, Any], spaced=True) -> None:
+    def display(
+        self,
+        username: str,
+        user_data: Dict[str, Any],
+        stats: Dict[str, Any],
+        spaced=True,
+    ) -> None:
         """
         Display git provider statistics in neofetch style.
 
@@ -101,10 +111,10 @@ class DisplayFormatter:
         # Determine layout based on available space and content dimensions
         layout = self._determine_layout(username, user_data, stats)
 
-        if layout == 'minimal':
+        if layout == "minimal":
             # Only show contribution graph
             self._display_minimal(username, stats, spaced)
-        elif layout == 'compact':
+        elif layout == "compact":
             # Show graph and key info
             self._display_compact(username, user_data, stats, spaced)
         else:
@@ -113,60 +123,68 @@ class DisplayFormatter:
 
         print()  # Empty line at the end
 
-    def _calculate_layout_dimensions(self, username: str,
-                                     user_data: Dict[str, Any],
-                                     stats: Dict[str, Any],
-                                     layout: str) -> tuple:
+    def _calculate_layout_dimensions(
+        self,
+        username: str,
+        user_data: Dict[str, Any],
+        stats: Dict[str, Any],
+        layout: str,
+    ) -> tuple:
         """Calculate width and height required for a given layout."""
-        if layout == 'minimal':
+        if layout == "minimal":
             return self._calculate_minimal_dimensions(username, stats)
-        elif layout == 'compact':
-            return self._calculate_compact_dimensions(username,
-                                                      user_data, stats)
-        elif layout == 'full':
+        elif layout == "compact":
+            return self._calculate_compact_dimensions(username, user_data, stats)
+        elif layout == "full":
             return self._calculate_full_dimensions(username, user_data, stats)
         return (0, 0)
 
-    def _calculate_minimal_dimensions(self, username: str,
-                                      stats: Dict[str, Any]) -> tuple:
+    def _calculate_minimal_dimensions(
+        self, username: str, stats: Dict[str, Any]
+    ) -> tuple:
         """Calculate dimensions for minimal layout (graph only)."""
         if not self.show_grid:
             # Just header dimensions
-            contrib_graph = stats.get('contribution_graph', [])
+            contrib_graph = stats.get("contribution_graph", [])
             total_contribs = self._calculate_total_contributions(
-                self._get_recent_weeks(contrib_graph))
+                self._get_recent_weeks(contrib_graph)
+            )
             header_lines = self._graph_header(username, total_contribs)
-            width = max((self._display_width(line) for line in header_lines),
-                        default=0)
+            width = max((self._display_width(line) for line in header_lines), default=0)
             height = len(header_lines)
             return (width, height)
 
         # Use custom dimensions if provided
-        width = (self.custom_width if self.custom_width is not None
-                 else self.terminal_width - 4)
-        height = (self.custom_height if self.custom_height is not None
-                  else 7)
+        width = (
+            self.custom_width
+            if self.custom_width is not None
+            else self.terminal_width - 4
+        )
+        height = self.custom_height if self.custom_height is not None else 7
         return (width, height)
 
-    def _calculate_compact_dimensions(self, username: str,
-                                      user_data: Dict[str, Any],
-                                      stats: Dict[str, Any]) -> tuple:
+    def _calculate_compact_dimensions(
+        self, username: str, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> tuple:
         """Calculate dimensions for compact layout."""
-        contrib_graph = stats.get('contribution_graph', [])
+        contrib_graph = stats.get("contribution_graph", [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        graph_width = (self.custom_width if self.custom_width is not None
-                       else max(40, (self.terminal_width - 40) * 3 // 4))
+        graph_width = (
+            self.custom_width
+            if self.custom_width is not None
+            else max(40, (self.terminal_width - 40) * 3 // 4)
+        )
 
         if self.show_grid:
             # Use custom height for graph height
-            graph_height = (self.custom_height if self.custom_height is not None
-                            else 7)
+            graph_height = self.custom_height if self.custom_height is not None else 7
         else:
             # Just header for dimensions
             total_contribs = self._calculate_total_contributions(recent_weeks)
             graph_lines = self._graph_header(username, total_contribs)
-            graph_width = max((self._display_width(line) for line in graph_lines),
-                              default=0)
+            graph_width = max(
+                (self._display_width(line) for line in graph_lines), default=0
+            )
             graph_height = len(graph_lines)
 
         right_side = []
@@ -181,33 +199,41 @@ class DisplayFormatter:
                 right_side.extend(achievements)
 
         max_lines = max(graph_height, len(right_side))
-        right_width = max((self._display_width(line) for line in right_side),
-                          default=0)
+        right_width = max((self._display_width(line) for line in right_side), default=0)
         total_width = graph_width + 2 + right_width
         return (total_width, max_lines)
 
-    def _calculate_full_dimensions(self, username: str,
-                                   user_data: Dict[str, Any],
-                                   stats: Dict[str, Any]) -> tuple:
+    def _calculate_full_dimensions(
+        self, username: str, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> tuple:
         """Calculate dimensions for full layout."""
-        contrib_graph = stats.get('contribution_graph', [])
-        graph_width = (self.custom_width if self.custom_width is not None
-                       else max(50, (self.terminal_width - 10) * 3 // 4))
+        contrib_graph = stats.get("contribution_graph", [])
+        graph_width = (
+            self.custom_width
+            if self.custom_width is not None
+            else max(50, (self.terminal_width - 10) * 3 // 4)
+        )
 
         left_side = []
         if self.show_grid:
             left_side = self._get_contribution_graph_lines(
-                contrib_graph, username, width_constraint=graph_width,
-                include_sections=False, spaced=True
+                contrib_graph,
+                username,
+                width_constraint=graph_width,
+                include_sections=False,
+                spaced=True,
             )
 
-        info_lines = (self._format_user_info(user_data, stats)
-                      if self.show_account else [])
-        language_lines = (self._format_languages(stats)
-                          if self.show_languages else [])
+        info_lines = (
+            self._format_user_info(user_data, stats) if self.show_account else []
+        )
+        language_lines = self._format_languages(stats) if self.show_languages else []
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        achievements = (self._build_achievements(recent_weeks, stats)
-                        if self.show_achievements else [])
+        achievements = (
+            self._build_achievements(recent_weeks, stats)
+            if self.show_achievements
+            else []
+        )
 
         right_side = list(info_lines)
         if language_lines and self.terminal_width >= 120:
@@ -217,41 +243,43 @@ class DisplayFormatter:
             right_side.append("")
             right_side.extend(achievements)
 
-        max_left_width = max(
-            self._display_width(line) for line in left_side
-        ) if left_side else 0
-        max_right_width = max(
-            self._display_width(line) for line in right_side
-        ) if right_side else 0
+        max_left_width = (
+            max(self._display_width(line) for line in left_side) if left_side else 0
+        )
+        max_right_width = (
+            max(self._display_width(line) for line in right_side) if right_side else 0
+        )
 
         total_width = max_left_width + 2 + max_right_width
         total_height = max(len(left_side), len(right_side))
         return (total_width, total_height)
 
-    def _determine_layout(self, username: str, user_data: Dict[str, Any],
-                          stats: Dict[str, Any]) -> str:
+    def _determine_layout(
+        self, username: str, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> str:
         """Determine layout based on available space and content dimensions."""
         # If graph_only is set, always use minimal
         if self.graph_only:
-            return 'minimal'
+            return "minimal"
 
-        layouts = ['full', 'compact', 'minimal']
-        best_layout = 'minimal'
+        layouts = ["full", "compact", "minimal"]
+        best_layout = "minimal"
 
         for layout in layouts:
             width, height = self._calculate_layout_dimensions(
-                username, user_data, stats, layout)
+                username, user_data, stats, layout
+            )
 
             # Check if this layout fits
-            if (width <= self.terminal_width and
-                    height <= self.available_height):
+            if width <= self.terminal_width and height <= self.available_height:
                 best_layout = layout
                 break
 
         return best_layout
 
-    def _display_minimal(self, username: str, stats: Dict[str, Any],
-                         spaced=True) -> None:
+    def _display_minimal(
+        self, username: str, stats: Dict[str, Any], spaced=True
+    ) -> None:
         """Display only contribution graph for narrow terminals."""
         if self.graph_timeline:
             # Show git timeline graph
@@ -264,15 +292,16 @@ class DisplayFormatter:
 
         if not self.show_grid:
             # Show just the header without grid
-            contrib_graph = stats.get('contribution_graph', [])
+            contrib_graph = stats.get("contribution_graph", [])
             total_contribs = self._calculate_total_contributions(
-                self._get_recent_weeks(contrib_graph))
+                self._get_recent_weeks(contrib_graph)
+            )
             header_lines = self._graph_header(username, total_contribs)
             for line in header_lines:
                 print(line)
             return
 
-        contrib_graph = stats.get('contribution_graph', [])
+        contrib_graph = stats.get("contribution_graph", [])
         graph_lines = self._get_contribution_graph_lines(
             contrib_graph,
             username,
@@ -283,8 +312,13 @@ class DisplayFormatter:
         for line in graph_lines:
             print(line)
 
-    def _display_compact(self, username: str, user_data: Dict[str, Any],
-                         stats: Dict[str, Any], spaced=True) -> None:
+    def _display_compact(
+        self,
+        username: str,
+        user_data: Dict[str, Any],
+        stats: Dict[str, Any],
+        spaced=True,
+    ) -> None:
         """Display graph and minimal info side-by-side (no languages)."""
         if self.graph_timeline:
             # Show git timeline graph (only if no right side content for layout)
@@ -293,7 +327,7 @@ class DisplayFormatter:
                 info_lines = self._format_user_info_compact(user_data, stats)
                 right_side.extend(info_lines)
             if self.show_achievements:
-                contrib_graph = stats.get('contribution_graph', [])
+                contrib_graph = stats.get("contribution_graph", [])
                 recent_weeks = self._get_recent_weeks(contrib_graph)
                 achievements = self._build_achievements(recent_weeks, stats)
                 if achievements:
@@ -310,7 +344,7 @@ class DisplayFormatter:
                 return
             # Fall back to normal display if there's right side content
 
-        contrib_graph = stats.get('contribution_graph', [])
+        contrib_graph = stats.get("contribution_graph", [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
         graph_width = max(40, (self.terminal_width - 40) * 3 // 4)
 
@@ -347,10 +381,10 @@ class DisplayFormatter:
         # Display side-by-side
         max_lines = max(len(graph_lines), len(right_side))
         for i in range(max_lines):
-            graph_part = (graph_lines[i] if i < len(graph_lines) else "")
+            graph_part = graph_lines[i] if i < len(graph_lines) else ""
             graph_len = self._display_width(graph_part)
             padding = " " * max(0, graph_width - graph_len)
-            info_part = (right_side[i] if i < len(right_side) else "")
+            info_part = right_side[i] if i < len(right_side) else ""
             print(f"{graph_part}{padding}  {info_part}")
 
     def _reverse_truncate(self, line: str, max_width: int):
@@ -376,15 +410,20 @@ class DisplayFormatter:
                 result.append((color, text[-remaining:]))
                 remaining = 0
 
-        final = ''.join(color + text for color, text in reversed(result))
-        final += self.colors.get('reset', '\x1b[0m')
+        final = "".join(color + text for color, text in reversed(result))
+        final += self.colors.get("reset", "\x1b[0m")
         return final
 
-    def _display_full(self, username: str, user_data: Dict[str, Any],
-                      stats: Dict[str, Any], spaced=True) -> None:
+    def _display_full(
+        self,
+        username: str,
+        user_data: Dict[str, Any],
+        stats: Dict[str, Any],
+        spaced=True,
+    ) -> None:
         """Display full layout with graph and all info sections."""
         left_side = []
-        ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
+        ANSI_PATTERN = re.compile(r"\033\[[0-9;]*m")
         if self.graph_timeline:
             # Show git timeline graph instead of contribution graph
             try:
@@ -392,14 +431,21 @@ class DisplayFormatter:
                 left_side = timeline_text.split("\n")
 
                 # Still show right side info
-                contrib_graph = stats.get('contribution_graph', [])
-                info_lines = (self._format_user_info(user_data, stats)
-                              if self.show_account else [])
-                language_lines = (self._format_languages(stats)
-                                  if self.show_languages else [])
+                contrib_graph = stats.get("contribution_graph", [])
+                info_lines = (
+                    self._format_user_info(user_data, stats)
+                    if self.show_account
+                    else []
+                )
+                language_lines = (
+                    self._format_languages(stats) if self.show_languages else []
+                )
                 recent_weeks = self._get_recent_weeks(contrib_graph)
-                achievements = (self._build_achievements(recent_weeks, stats)
-                                if self.show_achievements else [])
+                achievements = (
+                    self._build_achievements(recent_weeks, stats)
+                    if self.show_achievements
+                    else []
+                )
 
                 right_side = list(info_lines)
                 if language_lines and self.terminal_width >= 120:
@@ -409,9 +455,7 @@ class DisplayFormatter:
                     right_side.append("")
                     right_side.extend(achievements)
 
-                right_width = max(
-                    self._display_width(line) for line in right_side
-                )
+                right_width = max(self._display_width(line) for line in right_side)
 
                 offset = 80
                 max_width = self.terminal_width - right_width - offset
@@ -419,15 +463,21 @@ class DisplayFormatter:
                 if right_side and left_side:
                     print()  # Add spacing
                     for l, r in zip(left_side, right_side):
-                        print(self._reverse_truncate(l, max_width),
-                              self.colors['reset'], r)
+                        print(
+                            self._reverse_truncate(l, max_width),
+                            self.colors["reset"],
+                            r,
+                        )
             except Exception as e:
                 print(f"Error displaying timeline: {e}")
             return
 
-        contrib_graph = stats.get('contribution_graph', [])
-        graph_width = (self.custom_width if self.custom_width is not None
-                       else max(50, (self.terminal_width - 10) * 3 // 4))
+        contrib_graph = stats.get("contribution_graph", [])
+        graph_width = (
+            self.custom_width
+            if self.custom_width is not None
+            else max(50, (self.terminal_width - 10) * 3 // 4)
+        )
 
         if self.show_grid:
             left_side = self._get_contribution_graph_lines(
@@ -438,19 +488,22 @@ class DisplayFormatter:
                 spaced=spaced,
             )
 
-        # Add PR/issues sections to left side if enabled
+            # Add PR/issues sections to left side if enabled
             if self.show_pr or self.show_issues:
-                pull_request_lines = self._format_pull_requests(
-                    stats) if self.show_pr else []
-                issue_lines = self._format_issues(
-                    stats) if self.show_issues else []
+                pull_request_lines = (
+                    self._format_pull_requests(stats) if self.show_pr else []
+                )
+                issue_lines = self._format_issues(stats) if self.show_issues else []
 
                 section_columns = []
                 if pull_request_lines and issue_lines:
-                    pr_width = max((self._display_width(line)
-                                   for line in pull_request_lines), default=0)
-                    issue_width = max((self._display_width(line)
-                                      for line in issue_lines), default=0)
+                    pr_width = max(
+                        (self._display_width(line) for line in pull_request_lines),
+                        default=0,
+                    )
+                    issue_width = max(
+                        (self._display_width(line) for line in issue_lines), default=0
+                    )
                     total_width = pr_width + issue_width + len("   ")  # gap
                     if total_width <= graph_width:
                         section_columns = [pull_request_lines, issue_lines]
@@ -460,7 +513,8 @@ class DisplayFormatter:
                     section_columns = [issue_lines]
 
                 combined_sections = self._combine_section_grid(
-                    section_columns, width_limit=graph_width)
+                    section_columns, width_limit=graph_width
+                )
                 if combined_sections:
                     if left_side:
                         left_side.append("")
@@ -468,16 +522,20 @@ class DisplayFormatter:
         elif not self.show_grid:
             # If no grid and no PR/issues, show just header
             total_contribs = self._calculate_total_contributions(
-                self._get_recent_weeks(contrib_graph))
+                self._get_recent_weeks(contrib_graph)
+            )
             left_side = self._graph_header(username, total_contribs)
 
-        info_lines = (self._format_user_info(user_data, stats)
-                      if self.show_account else [])
-        language_lines = (self._format_languages(stats)
-                          if self.show_languages else [])
+        info_lines = (
+            self._format_user_info(user_data, stats) if self.show_account else []
+        )
+        language_lines = self._format_languages(stats) if self.show_languages else []
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        achievements = (self._build_achievements(recent_weeks, stats)
-                        if self.show_achievements else [])
+        achievements = (
+            self._build_achievements(recent_weeks, stats)
+            if self.show_achievements
+            else []
+        )
 
         right_side = list(info_lines)
         if language_lines and self.terminal_width >= 120:
@@ -494,9 +552,9 @@ class DisplayFormatter:
             return
 
         # Display side-by-side
-        max_left_width = max(
-            self._display_width(line) for line in left_side
-        ) if left_side else 0
+        max_left_width = (
+            max(self._display_width(line) for line in left_side) if left_side else 0
+        )
 
         for i in range(max(len(left_side), len(right_side))):
             if i < len(left_side):
@@ -511,11 +569,14 @@ class DisplayFormatter:
             info_part = right_side[i] if i < len(right_side) else ""
             print(f"{left_part}  {info_part}")
 
-    def _get_contribution_graph_lines(self, weeks_data: list,
-                                      username: str,
-                                      width_constraint: Optional[int] = None,
-                                      include_sections: bool = True,
-                                      spaced: bool = True) -> list:
+    def _get_contribution_graph_lines(
+        self,
+        weeks_data: list,
+        username: str,
+        width_constraint: Optional[int] = None,
+        include_sections: bool = True,
+        spaced: bool = True,
+    ) -> list:
         """
         Get contribution graph as lines for display.
 
@@ -557,8 +618,9 @@ class DisplayFormatter:
             width_constraint = self.terminal_width - 8
 
         max_weeks = self._calculate_max_weeks(width_constraint)
-        display_weeks = recent_weeks[-max_weeks:] if len(
-            recent_weeks) > max_weeks else recent_weeks
+        display_weeks = (
+            recent_weeks[-max_weeks:] if len(recent_weeks) > max_weeks else recent_weeks
+        )
 
         # Determine how many days to show
         days_to_show = 7
@@ -568,10 +630,10 @@ class DisplayFormatter:
         # Prepare rows for each day of the week (Sun-Sat)
         day_rows: list[list[str]] = [[] for _ in range(days_to_show)]
         for week in display_weeks:
-            days = week.get('contributionDays', [])
+            days = week.get("contributionDays", [])
             for idx in range(days_to_show):
                 day = days[idx] if idx < len(days) else {}
-                count = day.get('contributionCount', 0)
+                count = day.get("contributionCount", 0)
                 if spaced:
                     block = self._get_contribution_block_spaced(count)
                 else:
@@ -603,43 +665,53 @@ class DisplayFormatter:
     def _get_local_contribution_weeks(self):
         """Get contribution weeks from local git repository."""
         from .fetcher import BaseFetcher
+
         return BaseFetcher._build_contribution_graph_from_git()
 
     def _get_graph_text(self, vertical=False):
-        text = subprocess.check_output(
-            ['git', '--no-pager', 'log', '--color=always',
-                '--graph', '--all', '--pretty=format:""']
-        ).decode().replace('"', '')
+        text = (
+            subprocess.check_output(
+                [
+                    "git",
+                    "--no-pager",
+                    "log",
+                    "--color=always",
+                    "--graph",
+                    "--all",
+                    '--pretty=format:""',
+                ]
+            )
+            .decode()
+            .replace('"', "")
+        )
 
         if vertical:
             return text
 
-        text = text.translate(str.maketrans(
-            r"\/", r"\/"[::-1])).replace("|", "-")
+        text = text.translate(str.maketrans(r"\/", r"\/"[::-1])).replace("|", "-")
 
-        ANSI_PATTERN = re.compile(r'\033\[[0-9;]*m')
+        ANSI_PATTERN = re.compile(r"\033\[[0-9;]*m")
 
         lines = text.splitlines()
         parsed_lines = []
         for line in lines:
             parts = ANSI_PATTERN.split(line)
             codes = ANSI_PATTERN.findall(line)
-            current_color = ''
+            current_color = ""
             parsed = []
             for i, seg in enumerate(parts):
                 for ch in seg:
                     parsed.append((ch, current_color))
                 if i < len(codes):
                     code = codes[i]
-                    current_color = '' if code == '\033[0m' else code
+                    current_color = "" if code == "\033[0m" else code
             parsed_lines.append(parsed)
 
         if not parsed_lines:
-            return ''
+            return ""
 
         max_len = max(len(line) for line in parsed_lines)
-        padded = [line + [(' ', '')] * (max_len - len(line))
-                  for line in parsed_lines]
+        padded = [line + [(" ", "")] * (max_len - len(line)) for line in parsed_lines]
 
         rotated = []
         for col in reversed(range(max_len)):
@@ -648,42 +720,44 @@ class DisplayFormatter:
 
         out_lines = []
         for row in rotated:
-            cur_color = ''
-            out_line = ''
+            cur_color = ""
+            out_line = ""
             for ch, color in row:
                 if color != cur_color:
                     out_line += color
                     cur_color = color
                 out_line += ch
             if cur_color:
-                out_line += '\033[0m'
+                out_line += "\033[0m"
             out_lines.append(out_line)
 
-        return '\n'.join(out_lines)
+        return "\n".join(out_lines)
 
-    def _format_user_info_compact(self, user_data: Dict[str, Any],
-                                  stats: Dict[str, Any]) -> list:
+    def _format_user_info_compact(
+        self, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> list:
         """Format minimal user info for compact layout."""
         lines = []
 
-        name = user_data.get('name') or user_data.get('login', 'unknown')
-        total_contributions = stats.get('total_contributions')
+        name = user_data.get("name") or user_data.get("login", "unknown")
+        total_contributions = stats.get("total_contributions")
         if total_contributions is None:
             total_contributions = self._calculate_total_contributions(
-                stats.get('contribution_graph', [])
+                stats.get("contribution_graph", [])
             )
 
         # Format user line with same coloring as full display
-        contrib_str = self._colorize(f"{total_contributions:,}", 'orange')
-        name_str = self._colorize(name, 'header')
-        phrase_str = self._colorize('contributions this year', 'header')
+        contrib_str = self._colorize(f"{total_contributions:,}", "orange")
+        name_str = self._colorize(name, "header")
+        phrase_str = self._colorize("contributions this year", "header")
         user_line = f"{name_str} - {contrib_str} {phrase_str}"
         lines.append(user_line)
 
         return lines
 
-    def _format_user_info(self, user_data: Dict[str, Any],
-                          stats: Dict[str, Any]) -> list:
+    def _format_user_info(
+        self, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> list:
         """
         Format user information lines.
 
@@ -696,42 +770,38 @@ class DisplayFormatter:
         """
         lines = []
 
-        name = user_data.get('name') or user_data.get('login', 'unknown')
-        total_contributions = stats.get('total_contributions')
+        name = user_data.get("name") or user_data.get("login", "unknown")
+        total_contributions = stats.get("total_contributions")
         if total_contributions is None:
             total_contributions = self._calculate_total_contributions(
-                stats.get('contribution_graph', [])
+                stats.get("contribution_graph", [])
             )
 
         # Format user line with colored segments
-        contrib_str = self._colorize(f"{total_contributions:,}", 'orange')
-        name_str = self._colorize(name, 'header')
-        phrase_str = self._colorize('contributions this year', 'header')
+        contrib_str = self._colorize(f"{total_contributions:,}", "orange")
+        name_str = self._colorize(name, "header")
+        phrase_str = self._colorize("contributions this year", "header")
         user_line = f"{name_str} - {contrib_str} {phrase_str}"
         lines.append(user_line)
 
-        plain_line = (
-            f"{name} - {total_contributions:,} contributions this year"
-        )
-        lines.append(
-            self._colorize("─" * len(plain_line), "muted")
-        )
+        plain_line = f"{name} - {total_contributions:,} contributions this year"
+        lines.append(self._colorize("─" * len(plain_line), "muted"))
 
         def add_line(label: str, value: str) -> None:
             if value:
                 lines.append(f"{self._label(label)} {value}")
 
-        bio = user_data.get('bio', '')
+        bio = user_data.get("bio", "")
         if bio:
-            trimmed_bio = bio.strip().replace('\n', ' ')
+            trimmed_bio = bio.strip().replace("\n", " ")
             lines.append(f"{self._label('Bio')} {trimmed_bio[:80]}")
 
-        add_line('Company', user_data.get('company'))
-        add_line('Website', user_data.get('blog'))
+        add_line("Company", user_data.get("company"))
+        add_line("Website", user_data.get("blog"))
         # Add stars amount under website
-        total_stars = stats.get('total_stars')
+        total_stars = stats.get("total_stars")
         if total_stars is not None:
-            add_line('Stars', f"{total_stars} ⭐")
+            add_line("Stars", f"{total_stars} ⭐")
 
         return lines
 
@@ -740,19 +810,19 @@ class DisplayFormatter:
         lines = []
         lines.extend(self._section_header("Overview"))
 
-        total_repos = stats.get('total_repos', 0)
-        total_stars = stats.get('total_stars', 0)
-        total_forks = stats.get('total_forks', 0)
+        total_repos = stats.get("total_repos", 0)
+        total_stars = stats.get("total_stars", 0)
+        total_forks = stats.get("total_forks", 0)
 
-        lines.append(self._format_stat_line('Repositories', total_repos))
-        lines.append(self._format_stat_line('Stars', total_stars))
-        lines.append(self._format_stat_line('Forks', total_forks))
+        lines.append(self._format_stat_line("Repositories", total_repos))
+        lines.append(self._format_stat_line("Stars", total_stars))
+        lines.append(self._format_stat_line("Forks", total_forks))
 
         return lines
 
     def _format_languages(self, stats: Dict[str, Any]) -> list:
         """Format language distribution for right column."""
-        languages = stats.get('languages', {})
+        languages = stats.get("languages", {})
         if not languages:
             return []
 
@@ -760,41 +830,38 @@ class DisplayFormatter:
         lines.extend(self._section_header("Top Languages"))
 
         sorted_langs = sorted(
-            languages.items(),
-            key=lambda item: item[1],
-            reverse=True
+            languages.items(), key=lambda item: item[1], reverse=True
         )[:5]
 
         for lang, percentage in sorted_langs:
             # Reword 'Jupyter notebook' to 'Jupyter'
-            if lang.lower() == 'jupyter notebook':
-                lang = 'Jupyter'
+            if lang.lower() == "jupyter notebook":
+                lang = "Jupyter"
             lines.append(self._format_language_line(lang, percentage))
 
         return lines
 
     def _format_pull_requests(self, stats: Dict[str, Any]) -> list:
         """Format pull request dashboard section."""
-        pr_data = stats.get('pull_requests') or {}
+        pr_data = stats.get("pull_requests") or {}
         groups = [
-            ('Awaiting Review', pr_data.get('awaiting_review', {})),
-            ('Your Open PRs', pr_data.get('open', {})),
-            ('Mentions', pr_data.get('mentions', {})),
+            ("Awaiting Review", pr_data.get("awaiting_review", {})),
+            ("Your Open PRs", pr_data.get("open", {})),
+            ("Mentions", pr_data.get("mentions", {})),
         ]
-        return self._format_dashboard_section('Pull Requests', groups)
+        return self._format_dashboard_section("Pull Requests", groups)
 
     def _format_issues(self, stats: Dict[str, Any]) -> list:
         """Format issues dashboard section."""
-        issue_data = stats.get('issues') or {}
+        issue_data = stats.get("issues") or {}
         groups = [
-            ('Assigned', issue_data.get('assigned', {})),
-            ('Created (open)', issue_data.get('created', {})),
-            ('Mentions', issue_data.get('mentions', {})),
+            ("Assigned", issue_data.get("assigned", {})),
+            ("Created (open)", issue_data.get("created", {})),
+            ("Mentions", issue_data.get("mentions", {})),
         ]
-        return self._format_dashboard_section('Issues', groups)
+        return self._format_dashboard_section("Issues", groups)
 
-    def _render_progress_bar(self, percentage: float,
-                             width: int = 24) -> str:
+    def _render_progress_bar(self, percentage: float, width: int = 24) -> str:
         """Render a progress bar for percentage values."""
         width = max(width, 1)
         capped_percentage = max(0.0, min(percentage, 100.0))
@@ -806,12 +873,13 @@ class DisplayFormatter:
         empty_segment = "▱" * empty
 
         if self.enable_color and filled_segment:
-            filled_segment = self._colorize(filled_segment, 'green')
+            filled_segment = self._colorize(filled_segment, "green")
 
         return f"[{filled_segment}{empty_segment}]"
 
-    def _render_progress_bar_no_brackets(self, percentage: float,
-                                         width: int = 24) -> str:
+    def _render_progress_bar_no_brackets(
+        self, percentage: float, width: int = 24
+    ) -> str:
         """Render a progress bar without brackets for percentage values."""
         width = max(width, 1)
         capped_percentage = max(0.0, min(percentage, 100.0))
@@ -823,7 +891,7 @@ class DisplayFormatter:
         empty_segment = "▱" * empty
 
         if self.enable_color and filled_segment:
-            filled_segment = self._colorize(filled_segment, 'green')
+            filled_segment = self._colorize(filled_segment, "green")
 
         return f"{filled_segment}{empty_segment}"
 
@@ -831,37 +899,32 @@ class DisplayFormatter:
         """Create a stylized section header."""
         heading = title.upper()
         underline = "─" * len(heading)
-        return [
-            self._colorize(heading, 'header'),
-            self._colorize(underline, 'muted')
-        ]
+        return [self._colorize(heading, "header"), self._colorize(underline, "muted")]
 
     def _label(self, text: str) -> str:
         """Format labels with consistent padding."""
         label = f"{text}:"
         padded = f"{label:<12}"
         if self.enable_color:
-            return self._colorize(padded, 'bold')
+            return self._colorize(padded, "bold")
         return padded
 
     def _format_stat_line(self, label: str, value: Any) -> str:
         """Format a single statistics line."""
         return f"{self._label(label)} {value}"
 
-    def _format_language_line(self, language: str,
-                              percentage: float) -> str:
+    def _format_language_line(self, language: str, percentage: float) -> str:
         """Format language entry with progress bar."""
         # Use consistent padding without relying on label() which adds colors
         lang_label = f"{language}:"
         padded_label = f"{lang_label:<12}"
         if self.enable_color:
-            padded_label = self._colorize(padded_label, 'bold')
+            padded_label = self._colorize(padded_label, "bold")
 
         bar = self._render_progress_bar_no_brackets(percentage)
         return f"{padded_label} {bar} {percentage:5.1f}%"
 
-    def _format_dashboard_section(self, title: str,
-                                  groups: list) -> list:
+    def _format_dashboard_section(self, title: str, groups: list) -> list:
         """Format a dashboard section with grouped items."""
         if not groups:
             return []
@@ -872,11 +935,11 @@ class DisplayFormatter:
         label_width = max((len(label) for label, _ in groups), default=0) + 2
 
         for idx, (label, data) in enumerate(groups):
-            total = (data or {}).get('total_count', 0)
+            total = (data or {}).get("total_count", 0)
             label_text = self._dashboard_label(label, label_width)
             lines.append(f"{label_text} {total}")
 
-            items = (data or {}).get('items', [])[:3]
+            items = (data or {}).get("items", [])[:3]
             if not items:
                 lines.append("  • None")
             else:
@@ -892,15 +955,15 @@ class DisplayFormatter:
         label = f"{text}:"
         padded = f"{label:<{width}}"
         if self.enable_color:
-            return self._colorize(padded, 'header')
+            return self._colorize(padded, "header")
         return padded
 
-    def _format_dashboard_item(self, item: Dict[str, Any],
-                               title_width: int = 24,
-                               repo_width: int = 16) -> str:
-        title = self._truncate_text(item.get('title', ''), title_width)
-        repo = item.get('repo', '')
-        repo_part = ''
+    def _format_dashboard_item(
+        self, item: Dict[str, Any], title_width: int = 24, repo_width: int = 16
+    ) -> str:
+        title = self._truncate_text(item.get("title", ""), title_width)
+        repo = item.get("repo", "")
+        repo_part = ""
         if repo:
             repo_part = f" ({self._truncate_text(repo, repo_width)})"
 
@@ -911,8 +974,8 @@ class DisplayFormatter:
         if self._display_width(text) <= max_width:
             return text
 
-        ellipsis = '…'
-        truncated = ''
+        ellipsis = "…"
+        truncated = ""
         for char in text:
             if self._display_width(truncated + char + ellipsis) > max_width:
                 break
@@ -942,11 +1005,11 @@ class DisplayFormatter:
         last_month = None
 
         for week in weeks_data:
-            days = week.get('contributionDays', [])
+            days = week.get("contributionDays", [])
             if not days:
                 continue
 
-            first_day = days[0].get('date')
+            first_day = days[0].get("date")
             if not first_day:
                 continue
 
@@ -959,18 +1022,18 @@ class DisplayFormatter:
                 continue
 
             try:
-                month_abbr = date_obj.strftime('%b')
+                month_abbr = date_obj.strftime("%b")
             except (ValueError, OverflowError):
                 # strftime can fail with years outside 1900-9999
                 continue
-                
+
             if month_abbr != last_month:
                 month_chars.append(month_abbr)
                 last_month = month_abbr
             else:
                 month_chars.append("   ")
 
-        month_string = ' '.join(month_chars)
+        month_string = " ".join(month_chars)
         return f"    {month_string}" if month_string else ""
 
     def _build_month_line_spaced(self, weeks_data: list) -> str:
@@ -978,18 +1041,30 @@ class DisplayFormatter:
         if not weeks_data:
             return ""
 
-        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-                  "Sep", "Oct", "Nov", "Dec"]
+        months = [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ]
 
         # Build month string with proper spacing (each week = 2 chars wide)
         month_line = ""
 
         for idx, week in enumerate(weeks_data):
-            days = week.get('contributionDays', [])
+            days = week.get("contributionDays", [])
             if not days:
                 continue
 
-            first_day = days[0].get('date')
+            first_day = days[0].get("date")
             if not first_day:
                 continue
 
@@ -1007,14 +1082,12 @@ class DisplayFormatter:
                 month_line += months[current_month - 1]
             else:
                 prev_week = weeks_data[idx - 1]
-                prev_days = prev_week.get('contributionDays', [])
+                prev_days = prev_week.get("contributionDays", [])
                 if prev_days:
-                    prev_first_day = prev_days[0].get('date')
+                    prev_first_day = prev_days[0].get("date")
                     if prev_first_day:
                         try:
-                            prev_date_obj = datetime.fromisoformat(
-                                prev_first_day
-                            )
+                            prev_date_obj = datetime.fromisoformat(prev_first_day)
                             # Validate year is in reasonable range
                             if prev_date_obj.year < 1900 or prev_date_obj.year > 9999:
                                 continue
@@ -1025,9 +1098,7 @@ class DisplayFormatter:
                                 current_width = len(month_line)
                                 # Ensure at least 1 space between months
                                 month_name = months[current_month - 1]
-                                calc = (target_width -
-                                        current_width -
-                                        len(month_name))
+                                calc = target_width - current_width - len(month_name)
                                 needed_space = max(1, calc)
                                 month_line += " " * needed_space
                                 month_line += month_name
@@ -1039,32 +1110,32 @@ class DisplayFormatter:
     def _build_legend(self) -> str:
         """Create contribution intensity legend."""
         buckets = [0, 1, 4, 8, 16]
-        blocks = ' '.join(
-            self._get_contribution_block_spaced(b) for b in buckets
-        )
-        less = self._colorize('Less', 'muted') if self.enable_color else 'Less'
-        more = self._colorize('More', 'muted') if self.enable_color else 'More'
+        blocks = " ".join(self._get_contribution_block_spaced(b) for b in buckets)
+        less = self._colorize("Less", "muted") if self.enable_color else "Less"
+        more = self._colorize("More", "muted") if self.enable_color else "More"
         return f"    {less} {blocks} {more}"
 
     def _build_legend_spaced(self) -> str:
         """Build legend with GitHub's actual color palette (Kusa style)."""
         # Build legend using configured hex colors for levels 0-4
-        levels = ['0', '1', '2', '3', '4']
-        reset = '\033[0m'
+        levels = ["0", "1", "2", "3", "4"]
+        reset = "\033[0m"
 
         if not self.enable_color:
-            blocks = ' '.join(['■'] * len(levels))
+            blocks = " ".join(["■"] * len(levels))
             return f"    Less {blocks} More"
 
         blocks_str = ""
         for lvl in levels:
-            hex_col = self.hex_colors.get(lvl, '#000000')
+            hex_col = self.hex_colors.get(lvl, "#000000")
             color = hex_to_ansi(hex_col, background=False)
             blocks_str += f"{color}■{reset} "
 
         return f"    Less {blocks_str}More"
 
-    def _build_achievements(self, weeks_data: list, stats: Optional[Dict[str, Any]] = None) -> list:
+    def _build_achievements(
+        self, weeks_data: list, stats: Optional[Dict[str, Any]] = None
+    ) -> list:
         """
         Build achievements section with streaks and stats.
 
@@ -1081,9 +1152,9 @@ class DisplayFormatter:
         lines = []
 
         # Use cached streak values from stats if available, otherwise calculate
-        if stats and 'current_streak' in stats and 'max_streak' in stats:
-            current_streak = stats.get('current_streak', 0)
-            max_streak = stats.get('max_streak', 0)
+        if stats and "current_streak" in stats and "max_streak" in stats:
+            current_streak = stats.get("current_streak", 0)
+            max_streak = stats.get("max_streak", 0)
         else:
             # Fallback to calculation for backwards compatibility
             current_streak, max_streak = self._calculate_streaks(weeks_data)
@@ -1097,9 +1168,9 @@ class DisplayFormatter:
         )
 
         if achievements_list:
-            title = 'ACHIEVEMENTS'
-            lines.append(self._colorize(title, 'header'))
-            lines.append(self._colorize('─' * len(title), 'muted'))
+            title = "ACHIEVEMENTS"
+            lines.append(self._colorize(title, "header"))
+            lines.append(self._colorize("─" * len(title), "muted"))
 
             label_width = max(
                 self._display_width(f"{entry['icon']} {entry['label']}")
@@ -1110,7 +1181,7 @@ class DisplayFormatter:
                 icon_label = f"{entry['icon']} {entry['label']}"
                 stripped_len = self._display_width(icon_label)
                 padding = " " * max(0, label_width - stripped_len)
-                value = entry['value']
+                value = entry["value"]
                 lines.append(f"{icon_label}{padding}  {value}")
 
         return lines
@@ -1123,8 +1194,8 @@ class DisplayFormatter:
         # Flatten contributions in reverse chronological order (newest first)
         all_contributions = []
         for week in weeks_data:
-            for day in week.get('contributionDays', []):
-                all_contributions.append(day.get('contributionCount', 0))
+            for day in week.get("contributionDays", []):
+                all_contributions.append(day.get("contributionCount", 0))
 
         all_contributions.reverse()
 
@@ -1151,8 +1222,9 @@ class DisplayFormatter:
 
         return current_streak, max_streak
 
-    def _get_achievement_entries(self, current_streak: int, max_streak: int,
-                                 total_contribs: int) -> list:
+    def _get_achievement_entries(
+        self, current_streak: int, max_streak: int, total_contribs: int
+    ) -> list:
         """Generate structured achievement entries for display."""
         entries = []
 
@@ -1163,50 +1235,40 @@ class DisplayFormatter:
 
         # Streak achievements
         if current_streak > 0:
-            entries.append({
-                'icon': color_icon("🔥", 'red'),
-                'label': 'Current Streak',
-                'value': (
-                    f"{current_streak} day"
-                    f"{'s' if current_streak != 1 else ''}"
-                )
-            })
+            entries.append(
+                {
+                    "icon": color_icon("🔥", "red"),
+                    "label": "Current Streak",
+                    "value": (
+                        f"{current_streak} day{'s' if current_streak != 1 else ''}"
+                    ),
+                }
+            )
 
         if max_streak > 0:
-            entries.append({
-                'icon': color_icon("⭐", 'yellow'),
-                'label': 'Best Streak',
-                'value': (
-                    f"{max_streak} day"
-                    f"{'s' if max_streak != 1 else ''}"
-                )
-            })
+            entries.append(
+                {
+                    "icon": color_icon("⭐", "yellow"),
+                    "label": "Best Streak",
+                    "value": (f"{max_streak} day{'s' if max_streak != 1 else ''}"),
+                }
+            )
 
-        # Contribution milestones (shortened values for consistent width)
+        # Contribution count with milestone-based icons
         if total_contribs >= 10000:
-            entries.append({
-                'icon': color_icon("💎", 'magenta'),
-                'label': 'Contributions',
-                'value': '10k+'
-            })
+            icon = color_icon("💎", "magenta")
         elif total_contribs >= 5000:
-            entries.append({
-                'icon': color_icon("👑", 'yellow'),
-                'label': 'Contributions',
-                'value': '5k+'
-            })
+            icon = color_icon("👑", "yellow")
         elif total_contribs >= 1000:
-            entries.append({
-                'icon': color_icon("🎖️", 'cyan'),
-                'label': 'Contributions',
-                'value': '1k+'
-            })
+            icon = color_icon("🎖️", "cyan")
         elif total_contribs >= 100:
-            entries.append({
-                'icon': color_icon("🏆", 'yellow'),
-                'label': 'Contributions',
-                'value': '100+'
-            })
+            icon = color_icon("🏆", "yellow")
+        else:
+            icon = color_icon("📊", "white")
+
+        entries.append(
+            {"icon": icon, "label": "Contributions", "value": f"{total_contribs:,}"}
+        )
 
         return entries
 
@@ -1216,8 +1278,9 @@ class DisplayFormatter:
             return []
         return weeks_data[-limit:] if len(weeks_data) > limit else weeks_data
 
-    def _combine_section_grid(self, columns: list,
-                              width_limit: Optional[int] = None) -> list:
+    def _combine_section_grid(
+        self, columns: list, width_limit: Optional[int] = None
+    ) -> list:
         """Combine multiple sections into aligned columns."""
         active_columns = [col for col in columns if col]
         if not active_columns:
@@ -1239,8 +1302,11 @@ class DisplayFormatter:
 
         for col, width in column_info:
             projected = width if not current_row else width + gap_width
-            if (width_limit is not None and current_row and
-                    current_width + projected > width_limit):
+            if (
+                width_limit is not None
+                and current_row
+                and current_width + projected > width_limit
+            ):
                 rows.append(current_row)
                 current_row = []
                 current_width = indent_width
@@ -1282,7 +1348,7 @@ class DisplayFormatter:
         """Placeholder lines when contribution data is missing."""
         message = "No contribution data yet"
         if self.enable_color:
-            text = self._colorize(message, 'muted')
+            text = self._colorize(message, "muted")
         else:
             text = message
         return [f"    {text}", ""]
@@ -1304,7 +1370,7 @@ class DisplayFormatter:
         colors = self.colors
 
         color_code = colors.get(color.lower())
-        reset = colors['reset']
+        reset = colors["reset"]
         if not color_code and color_code in webcolors.names():
             color_code = hex_to_ansi(webcolors.name_to_hex(color_code))
 
@@ -1324,24 +1390,22 @@ class DisplayFormatter:
             Human-readable date string
         """
         try:
-            dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
             # Validate year is in reasonable range to avoid C int overflow
             if dt.year < 1900 or dt.year > 9999:
                 return date_string
-            return dt.strftime('%B %d, %Y')
+            return dt.strftime("%B %d, %Y")
         except (ValueError, AttributeError, OverflowError):
             return date_string
 
     def _get_contribution_block(self, count: int) -> str:
-        """Return compact block (visual: no light gap between weeks).
-
-        """
+        """Return compact block (visual: no light gap between weeks)."""
         if not self.enable_color:
             # When colors are disabled fall back to the original box+space
             # so output remains readable and aligned.
             return f"{self.custom_box} "
 
-        reset = '\033[0m'
+        reset = "\033[0m"
         # Map contribution count to configurable color levels
         level = get_contribution_color_level(count)
         bg = hex_to_ansi(self.hex_colors[level], background=True)
@@ -1357,9 +1421,9 @@ class DisplayFormatter:
         Color intensity based on contribution count.
         """
         if not self.enable_color:
-            return f'{self.custom_box} '
+            return f"{self.custom_box} "
 
-        reset = '\033[0m'
+        reset = "\033[0m"
         # Map contributions to configurable color levels
         level = get_contribution_color_level(count)
         color = hex_to_ansi(self.hex_colors[level], background=False)
@@ -1375,7 +1439,7 @@ class DisplayFormatter:
         patterns = self.text_patterns or CHAR_PATTERNS
 
         # Only allow A-Z and space for text mode
-        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ ')
+        allowed_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ ")
 
         grid: list[list[str]] = []
         for char in text.upper():
@@ -1385,7 +1449,7 @@ class DisplayFormatter:
                     f"Use --shape for predefined shapes. Got: '{char}'"
                 )
 
-            pattern = patterns.get(char, patterns.get(' ', []))
+            pattern = patterns.get(char, patterns.get(" ", []))
             if not grid:
                 # Make a shallow copy of each row to avoid mutating source
                 grid = [row[:] for row in pattern]
@@ -1416,13 +1480,10 @@ class DisplayFormatter:
                 # Use intensity directly (0-4 matches color mapping)
                 count = intensity
                 # Use a fake date that increments per column for readability
-                week_days.append({
-                    'contributionCount': count,
-                    'date': f'2023-01-{col_idx + 1:02d}'
-                })
-            weeks.append({
-                'contributionDays': week_days
-            })
+                week_days.append(
+                    {"contributionCount": count, "date": f"2023-01-{col_idx + 1:02d}"}
+                )
+            weeks.append({"contributionDays": week_days})
 
         return weeks
 
@@ -1452,8 +1513,7 @@ class DisplayFormatter:
             key = name.lower()
             if key not in patterns:
                 available_shapes = [
-                    k for k in patterns.keys()
-                    if k not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ '
+                    k for k in patterns.keys() if k not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
                 ]
                 raise ValueError(
                     f"Shape '{name}' not found. Available shapes: "
@@ -1480,10 +1540,10 @@ class DisplayFormatter:
     def _strip_ansi(self, text: str) -> str:
         """Remove ANSI escape sequences from text."""
         if not text:
-            return ''
+            return ""
 
-        ansi_pattern = re.compile(r'\033\[[0-9;]*m')
-        return ansi_pattern.sub('', text)
+        ansi_pattern = re.compile(r"\033\[[0-9;]*m")
+        return ansi_pattern.sub("", text)
 
     def _display_width(self, text: str) -> int:
         """Calculate display width accounting for wide characters."""
@@ -1497,9 +1557,9 @@ class DisplayFormatter:
                 continue
 
             east_asian = unicodedata.east_asian_width(char)
-            if east_asian in ('F', 'W'):
+            if east_asian in ("F", "W"):
                 width += 2
-            elif east_asian == 'A':
+            elif east_asian == "A":
                 width += 1  # Treat ambiguous width as narrow for western fonts
             else:
                 width += 1
