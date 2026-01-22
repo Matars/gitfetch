@@ -173,7 +173,7 @@ class DisplayFormatter:
             info_lines = self._format_user_info_compact(user_data, stats)
             right_side.extend(info_lines)
         if self.show_achievements:
-            achievements = self._build_achievements(recent_weeks)
+            achievements = self._build_achievements(recent_weeks, stats)
             if achievements:
                 if right_side:
                     right_side.append("")
@@ -205,7 +205,7 @@ class DisplayFormatter:
         language_lines = (self._format_languages(stats)
                           if self.show_languages else [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        achievements = (self._build_achievements(recent_weeks)
+        achievements = (self._build_achievements(recent_weeks, stats)
                         if self.show_achievements else [])
 
         right_side = list(info_lines)
@@ -294,7 +294,7 @@ class DisplayFormatter:
             if self.show_achievements:
                 contrib_graph = stats.get('contribution_graph', [])
                 recent_weeks = self._get_recent_weeks(contrib_graph)
-                achievements = self._build_achievements(recent_weeks)
+                achievements = self._build_achievements(recent_weeks, stats)
                 if achievements:
                     if right_side:
                         right_side.append("")
@@ -331,7 +331,7 @@ class DisplayFormatter:
             info_lines = self._format_user_info_compact(user_data, stats)
             right_side.extend(info_lines)
         if self.show_achievements:
-            achievements = self._build_achievements(recent_weeks)
+            achievements = self._build_achievements(recent_weeks, stats)
             if achievements:
                 if right_side:
                     right_side.append("")
@@ -397,7 +397,7 @@ class DisplayFormatter:
                 language_lines = (self._format_languages(stats)
                                   if self.show_languages else [])
                 recent_weeks = self._get_recent_weeks(contrib_graph)
-                achievements = (self._build_achievements(recent_weeks)
+                achievements = (self._build_achievements(recent_weeks, stats)
                                 if self.show_achievements else [])
 
                 right_side = list(info_lines)
@@ -475,7 +475,7 @@ class DisplayFormatter:
         language_lines = (self._format_languages(stats)
                           if self.show_languages else [])
         recent_weeks = self._get_recent_weeks(contrib_graph)
-        achievements = (self._build_achievements(recent_weeks)
+        achievements = (self._build_achievements(recent_weeks, stats)
                         if self.show_achievements else [])
 
         right_side = list(info_lines)
@@ -512,7 +512,7 @@ class DisplayFormatter:
 
     def _get_contribution_graph_lines(self, weeks_data: list,
                                       username: str,
-                                      width_constraint: int = None,
+                                      width_constraint: Optional[int] = None,
                                       include_sections: bool = True,
                                       spaced: bool = True) -> list:
         """
@@ -565,7 +565,7 @@ class DisplayFormatter:
             days_to_show = min(7, max(1, self.custom_height))
 
         # Prepare rows for each day of the week (Sun-Sat)
-        day_rows = [[] for _ in range(days_to_show)]
+        day_rows: list[list[str]] = [[] for _ in range(days_to_show)]
         for week in display_weeks:
             days = week.get('contributionDays', [])
             for idx in range(days_to_show):
@@ -592,7 +592,7 @@ class DisplayFormatter:
 
         # Add achievements section
         if include_sections:
-            achievements = self._build_achievements(recent_weeks)
+            achievements = self._build_achievements(recent_weeks, stats)
             if achievements:
                 lines.append("")
                 lines.extend(achievements)
@@ -1063,15 +1063,29 @@ class DisplayFormatter:
 
         return f"    Less {blocks_str}More"
 
-    def _build_achievements(self, weeks_data: list) -> list:
-        """Build achievements section with streaks and stats."""
+    def _build_achievements(self, weeks_data: list, stats: Optional[Dict[str, Any]] = None) -> list:
+        """
+        Build achievements section with streaks and stats.
+
+        Args:
+            weeks_data: Contribution graph weeks data
+            stats: Optional stats dict with pre-calculated streaks
+
+        Returns:
+            List of formatted achievement lines
+        """
         if not weeks_data:
             return []
 
         lines = []
 
-        # Calculate streaks
-        current_streak, max_streak = self._calculate_streaks(weeks_data)
+        # Use cached streak values from stats if available, otherwise calculate
+        if stats and 'current_streak' in stats and 'max_streak' in stats:
+            current_streak = stats.get('current_streak', 0)
+            max_streak = stats.get('max_streak', 0)
+        else:
+            # Fallback to calculation for backwards compatibility
+            current_streak, max_streak = self._calculate_streaks(weeks_data)
 
         # Calculate total contributions
         total_contribs = self._calculate_total_contributions(weeks_data)
@@ -1218,8 +1232,8 @@ class DisplayFormatter:
             for col in active_columns
         ]
 
-        rows = []
-        current_row = []
+        rows: list[list[tuple[list[str], int]]] = []
+        current_row: list[tuple[list[str], int]] = []
         current_width = indent_width
 
         for col, width in column_info:
@@ -1332,13 +1346,14 @@ class DisplayFormatter:
 
         reset = '\033[0m'
         # Map contribution count to configurable color levels
+        # GitHub thresholds: 0, 1-2, 3-5, 6-9, 10+
         if count == 0:
             level = '0'
-        elif count < 3:
+        elif count <= 2:
             level = '1'
-        elif count < 7:
+        elif count <= 5:
             level = '2'
-        elif count < 13:
+        elif count <= 9:
             level = '3'
         else:
             level = '4'
@@ -1359,13 +1374,14 @@ class DisplayFormatter:
 
         reset = '\033[0m'
         # Map contributions to configurable color levels
+        # GitHub thresholds: 0, 1-2, 3-5, 6-9, 10+
         if count == 0:
             level = '0'
-        elif count < 3:
+        elif count <= 2:
             level = '1'
-        elif count < 7:
+        elif count <= 5:
             level = '2'
-        elif count < 13:
+        elif count <= 9:
             level = '3'
         else:
             level = '4'
@@ -1384,7 +1400,7 @@ class DisplayFormatter:
         # Only allow A-Z and space for text mode
         allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ ')
 
-        grid = []
+        grid: list[list[str]] = []
         for char in text.upper():
             if char not in allowed_chars:
                 raise ValueError(
