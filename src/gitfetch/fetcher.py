@@ -37,6 +37,18 @@ from .calculations import (
     calculate_streaks,
     calculate_language_percentages,
 )
+from .search_query import (
+    build_pr_awaiting_review,
+    build_pr_open,
+    build_pr_mentions,
+    build_pr_draft,
+    build_pr_merged,
+    build_pr_closed_recently,
+    build_issue_assigned,
+    build_issue_created,
+    build_issue_mentions,
+    build_issue_commented,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -426,40 +438,38 @@ class GitHubFetcher(BaseFetcher):
 
             # Submit all search queries in parallel
             future_pr_awaiting = executor.submit(
-                self._search_items,
-                f"is:pr state:open review-requested:{search_username}",
+                self._search_items, build_pr_awaiting_review(search_username)
             )
             future_pr_open = executor.submit(
-                self._search_items, f"is:pr state:open author:{search_username}"
+                self._search_items, build_pr_open(search_username)
             )
             future_pr_mentions = executor.submit(
-                self._search_items, f"is:pr state:open mentions:{search_username}"
+                self._search_items, build_pr_mentions(search_username)
             )
             future_pr_draft = executor.submit(
-                self._search_items, f"is:pr is:draft author:{search_username}"
+                self._search_items, build_pr_draft(search_username)
             )
             future_pr_merged = executor.submit(
-                self._search_items, f"is:pr is:merged author:{search_username}"
+                self._search_items, build_pr_merged(search_username)
             )
             # PRs closed in the last 30 days
             from datetime import datetime, timedelta
 
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             future_pr_closed_recently = executor.submit(
-                self._search_items,
-                f"is:pr is:closed author:{search_username} closed:>={thirty_days_ago}",
+                self._search_items, build_pr_closed_recently(search_username, thirty_days_ago)
             )
             future_issue_assigned = executor.submit(
-                self._search_items, f"is:issue state:open assignee:{search_username}"
+                self._search_items, build_issue_assigned(search_username)
             )
             future_issue_created = executor.submit(
-                self._search_items, f"is:issue state:open author:{search_username}"
+                self._search_items, build_issue_created(search_username)
             )
             future_issue_mentions = executor.submit(
-                self._search_items, f"is:issue state:open mentions:{search_username}"
+                self._search_items, build_issue_mentions(search_username)
             )
             future_issue_commented = executor.submit(
-                self._search_items, f"is:issue commenter:{search_username} state:open"
+                self._search_items, build_issue_commented(search_username)
             )
 
             # Collect all PR and issue results
