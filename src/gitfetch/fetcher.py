@@ -3,15 +3,93 @@ Git data fetcher for various git hosting providers
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, TypeVar
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import wraps
 import subprocess
 import json
 import logging
 import sys
 import os
 import re
+import time
+
+from .constants import (
+    API_TIMEOUT_SHORT,
+    API_TIMEOUT_MEDIUM,
+    API_TIMEOUT_LONG,
+    SEARCH_RESULTS_PER_PAGE,
+    REPOS_PER_PAGE,
+    RATE_LIMIT_WARNING_THRESHOLD,
+    RATE_LIMIT_CRITICAL_THRESHOLD,
+)
+from .exceptions import (
+    AuthenticationError,
+    APIError,
+    RateLimitError,
+    UserNotFoundError,
+)
+from .calculations import (
+    calculate_current_streak,
+    calculate_max_streak,
+    calculate_total_contributions,
+    calculate_streaks,
+)
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def retry_on_failure(
+    max_attempts: int = 3,
+    initial_delay: float = 1.0,
+    max_delay: float = 10.0,
+    backoff_multiplier: float = 2.0,
+    exceptions: tuple = (Exception,),
+) -> Callable:
+    """
+    Decorator to retry a function on failure with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds before first retry
+        max_delay: Maximum delay between retries
+        backoff_multiplier: Multiplier for exponential backoff
+        exceptions: Tuple of exceptions to catch and retry on
+
+    Returns:
+        Decorated function with retry logic
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+            delay = initial_delay
+
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        logger.warning(
+                            f"{func.__name__} failed (attempt {attempt + 1}/{max_attempts}): {e}. "
+                            f"Retrying in {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * backoff_multiplier, max_delay)
+                    else:
+                        logger.error(
+                            f"{func.__name__} failed after {max_attempts} attempts: {e}"
+                        )
+
+            raise last_exception  # type: ignore
+
+        return wrapper
+
+    return decorator
 
 
 class BaseFetcher(ABC):
@@ -50,7 +128,9 @@ class BaseFetcher(ABC):
         pass
 
     @abstractmethod
-    def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def fetch_user_stats(
+        self, username: str, user_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Fetch detailed statistics for a user.
 
@@ -80,21 +160,23 @@ class BaseFetcher(ABC):
         try:
             # Get commit dates
             result = subprocess.run(
-                ['git', 'log', '--pretty=format:%ai', '--all'],
-                capture_output=True, text=True, cwd=repo_path
+                ["git", "log", "--pretty=format:%ai", "--all"],
+                capture_output=True,
+                text=True,
+                cwd=repo_path,
             )
             if result.returncode != 0:
                 return []
 
-            commits = result.stdout.strip().split('\n')
-            if not commits or commits == ['']:
+            commits = result.stdout.strip().split("\n")
+            if not commits or commits == [""]:
                 return []
 
             # Parse dates and count commits per day
-            commit_counts = collections.Counter()
+            commit_counts: collections.Counter[str] = collections.Counter()
             for commit in commits:
                 if commit:
-                    date_str = commit.split(' ')[0]  # YYYY-MM-DD
+                    date_str = commit.split(" ")[0]  # YYYY-MM-DD
                     commit_counts[date_str] += 1
 
             # Get date range (last year)
@@ -102,20 +184,19 @@ class BaseFetcher(ABC):
             start_date = end_date - timedelta(days=365)
 
             # Build weeks
-            weeks = []
+            weeks: list[dict[str, Any]] = []
             current_date = start_date
             while current_date <= end_date:
-                week = {'contributionDays': []}
+                week: dict[str, Any] = {"contributionDays": []}
                 for i in range(7):
                     day_date = current_date + timedelta(days=i)
                     if day_date > end_date:
                         break
                     count = commit_counts.get(day_date.isoformat(), 0)
-                    week['contributionDays'].append({
-                        'contributionCount': count,
-                        'date': day_date.isoformat()
-                    })
-                if week['contributionDays']:
+                    week["contributionDays"].append(
+                        {"contributionCount": count, "date": day_date.isoformat()}
+                    )
+                if week["contributionDays"]:
                     weeks.append(week)
                 current_date += timedelta(days=7)
 
@@ -147,17 +228,17 @@ class GitHubFetcher(BaseFetcher):
         """
         env = os.environ.copy()
         if self.token:
-            env['GH_TOKEN'] = self.token
+            env["GH_TOKEN"] = self.token
         return env
 
     def _check_gh_cli(self) -> None:
         """Check if GitHub CLI is installed and authenticated."""
         try:
             result = subprocess.run(
-                ['gh', 'auth', 'status'],
+                ["gh", "auth", "status"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=API_TIMEOUT_SHORT,
             )
             if result.returncode != 0:
                 print("\n⚠️  GitHub CLI is not authenticated!", file=sys.stderr)
@@ -168,8 +249,9 @@ class GitHubFetcher(BaseFetcher):
             print("\n❌ GitHub CLI (gh) is not installed!", file=sys.stderr)
             print("\nInstall it with:", file=sys.stderr)
             print("  macOS: brew install gh", file=sys.stderr)
-            print("  Linux: See https://github.com/cli/cli#installation",
-                  file=sys.stderr)
+            print(
+                "  Linux: See https://github.com/cli/cli#installation", file=sys.stderr
+            )
             print("\nThen run: gh auth login", file=sys.stderr)
             print("And try gitfetch again.\n", file=sys.stderr)
             sys.exit(1)
@@ -186,37 +268,44 @@ class GitHubFetcher(BaseFetcher):
         """
         try:
             result = subprocess.run(
-                ['gh', 'auth', 'status', '--json', 'hosts'],
+                ["gh", "auth", "status", "--json", "hosts"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=API_TIMEOUT_SHORT,
             )
             if result.returncode != 0:
                 try:
-                    with open(os.path.expanduser(
-                            "~/.config/gh/hosts.yml"), 'r') as f:
+                    with open(os.path.expanduser("~/.config/gh/hosts.yml"), "r") as f:
                         yml = f.read()
                     user = re.findall(" +user: +(.*)", yml)
                     if len(user) != 0:
                         return user[0]
                     else:
-                        raise Exception("Failed to get auth status")
+                        raise AuthenticationError("Failed to get authentication status")
                 except FileNotFoundError:
-                    raise Exception("Failed to get auth status")
+                    raise AuthenticationError("Failed to get authentication status")
 
             data = json.loads(result.stdout)
-            hosts = data.get('hosts', {})
-            github_com = hosts.get('github.com', [])
+            hosts = data.get("hosts", {})
+            github_com = hosts.get("github.com", [])
             if github_com and len(github_com) > 0:
-                return github_com[0]['login']
+                return github_com[0]["login"]
             else:
                 raise Exception("No GitHub.com auth found")
         except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
             raise Exception("Could not determine authenticated user")
 
+    @retry_on_failure(
+        max_attempts=3,
+        initial_delay=1.0,
+        max_delay=10.0,
+        exceptions=(subprocess.TimeoutExpired, json.JSONDecodeError, OSError),
+    )
     def _gh_api(self, endpoint: str, method: str = "GET") -> Any:
         """
         Call GitHub API using gh CLI.
+
+        Retries on timeout, network errors, and JSON parsing failures.
 
         Args:
             endpoint: API endpoint (e.g., '/users/octocat')
@@ -228,19 +317,52 @@ class GitHubFetcher(BaseFetcher):
         self._check_gh_cli()
         try:
             result = subprocess.run(
-                ['gh', 'api', endpoint, '-X', method],
+                ["gh", "api", endpoint, "-X", method],
                 capture_output=True,
                 text=True,
-                timeout=30,
-                env=self._build_env()
+                timeout=API_TIMEOUT_LONG,
+                env=self._build_env(),
             )
             if result.returncode != 0:
-                raise Exception(f"gh api failed: {result.stderr}")
+                raise APIError(
+                    f"GitHub API failed: {result.stderr}",
+                    hint="Check your authentication token",
+                )
             return json.loads(result.stdout)
         except subprocess.TimeoutExpired:
-            raise Exception("GitHub API request timed out")
+            raise APIError(
+                "GitHub API request timed out", hint="Check your network connection"
+            )
         except json.JSONDecodeError as e:
             raise Exception(f"Failed to parse GitHub API response: {e}")
+
+    def _check_rate_limit_status(self) -> None:
+        """
+        Check GitHub API rate limit status and warn if approaching limits.
+
+        Uses the /rate_limit endpoint to get current quota status.
+        """
+        try:
+            rate_data = self._gh_api("/rate_limit")
+            # GitHub API rate limit structure
+            core = rate_data.get("resources", {}).get("core", {})
+            remaining = core.get("remaining", 0)
+            limit = core.get("limit", 5000)
+            used = limit - remaining
+
+            if limit > 0:
+                usage_percent = (used / limit) * 100
+                if usage_percent >= RATE_LIMIT_CRITICAL_THRESHOLD:
+                    logger.warning(
+                        f"GitHub API rate limit critical: {used}/{limit} used ({usage_percent:.0f}%)"
+                    )
+                elif usage_percent >= RATE_LIMIT_WARNING_THRESHOLD:
+                    logger.warning(
+                        f"GitHub API rate limit warning: {used}/{limit} used ({usage_percent:.0f}%)"
+                    )
+        except Exception:
+            # Don't fail if rate limit check fails
+            pass
 
     def fetch_user_data(self, username: str) -> Dict[str, Any]:
         """
@@ -253,11 +375,15 @@ class GitHubFetcher(BaseFetcher):
             Dictionary containing user profile data
         """
         self._check_gh_cli()
-        return self._gh_api(f'/users/{username}')
+        return self._gh_api(f"/users/{username}")
 
-    def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def fetch_user_stats(
+        self, username: str, user_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Fetch detailed statistics for a GitHub user.
+
+        Uses parallel execution to fetch independent data concurrently.
 
         Args:
             username: GitHub username
@@ -267,73 +393,186 @@ class GitHubFetcher(BaseFetcher):
             Dictionary containing user statistics
         """
         self._check_gh_cli()
-        repos = self._fetch_repos(username)
 
-        total_stars = sum(repo.get('stargazers_count', 0) for repo in repos)
-        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
-        languages = self._calculate_language_stats(repos)
+        # Check rate limit status before making many API calls
+        self._check_rate_limit_status()
 
-        # Fetch contribution graph
-        contrib_graph = self._fetch_contribution_graph(username)
+        # Fetch independent data in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Submit initial parallel tasks
+            future_repos = executor.submit(self._fetch_repos, username)
+            future_contrib_graph = executor.submit(
+                self._fetch_contribution_graph, username
+            )
+            future_search_username = executor.submit(
+                self._get_search_username, username
+            )
 
-        # Calculate current contribution streak (most recent consecutive days
-        # with contributions). Flatten days in chronological order and then
-        # compute streak ending with the most recent day.
-        current_streak = 0
+            # Wait for repos to complete (needed for star/fork/language stats)
+            repos = future_repos.result()
+            contrib_graph = future_contrib_graph.result()
+            search_username = future_search_username.result()
+
+            # Calculate stats that depend on repos
+            total_stars = sum(repo.get("stargazers_count", 0) for repo in repos)
+            total_forks = sum(repo.get("forks_count", 0) for repo in repos)
+            languages = self._calculate_language_stats(repos)
+
+            # Calculate current contribution streak and total contributions
+            current_streak = self._calculate_current_streak(contrib_graph)
+            total_contributions = self._calculate_total_contributions(contrib_graph)
+
+            # Submit all search queries in parallel
+            future_pr_awaiting = executor.submit(
+                self._search_items,
+                f"is:pr state:open review-requested:{search_username}",
+            )
+            future_pr_open = executor.submit(
+                self._search_items, f"is:pr state:open author:{search_username}"
+            )
+            future_pr_mentions = executor.submit(
+                self._search_items, f"is:pr state:open mentions:{search_username}"
+            )
+            future_pr_draft = executor.submit(
+                self._search_items, f"is:pr is:draft author:{search_username}"
+            )
+            future_pr_merged = executor.submit(
+                self._search_items, f"is:pr is:merged author:{search_username}"
+            )
+            # PRs closed in the last 30 days
+            from datetime import datetime, timedelta
+
+            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            future_pr_closed_recently = executor.submit(
+                self._search_items,
+                f"is:pr is:closed author:{search_username} closed:>={thirty_days_ago}",
+            )
+            future_issue_assigned = executor.submit(
+                self._search_items, f"is:issue state:open assignee:{search_username}"
+            )
+            future_issue_created = executor.submit(
+                self._search_items, f"is:issue state:open author:{search_username}"
+            )
+            future_issue_mentions = executor.submit(
+                self._search_items, f"is:issue state:open mentions:{search_username}"
+            )
+            future_issue_commented = executor.submit(
+                self._search_items, f"is:issue commenter:{search_username} state:open"
+            )
+
+            # Collect all PR and issue results
+            pull_requests = {
+                "awaiting_review": future_pr_awaiting.result(),
+                "open": future_pr_open.result(),
+                "mentions": future_pr_mentions.result(),
+                "draft": future_pr_draft.result(),
+                "merged": future_pr_merged.result(),
+                "closed_recently": future_pr_closed_recently.result(),
+            }
+            issues = {
+                "assigned": future_issue_assigned.result(),
+                "created": future_issue_created.result(),
+                "mentions": future_issue_mentions.result(),
+                "commented": future_issue_commented.result(),
+            }
+
+        return {
+            "total_stars": total_stars,
+            "total_forks": total_forks,
+            "total_repos": len(repos),
+            "languages": languages,
+            "contribution_graph": contrib_graph,
+            "current_streak": current_streak,
+            "max_streak": self._calculate_max_streak(contrib_graph),
+            "total_contributions": total_contributions,
+            "pull_requests": pull_requests,
+            "issues": issues,
+        }
+
+    def _calculate_current_streak(self, contrib_graph: list) -> int:
+        """
+        Calculate the current contribution streak from contribution graph.
+
+        Args:
+            contrib_graph: List of weeks with contribution data
+
+        Returns:
+            Current streak of consecutive days with contributions
+        """
+        return calculate_current_streak(contrib_graph)
+
+    def _calculate_max_streak(self, contrib_graph: list) -> int:
+        """
+        Calculate the maximum (best) contribution streak from contribution graph.
+
+        Args:
+            contrib_graph: List of weeks with contribution data
+
+        Returns:
+            Maximum streak of consecutive days with contributions
+        """
+        return calculate_max_streak(contrib_graph)
+
+    def _calculate_total_contributions(self, contrib_graph: list) -> int:
+        """
+        Calculate total contributions from contribution graph.
+
+        Args:
+            contrib_graph: List of weeks with contribution data
+
+        Returns:
+            Total contributions across all weeks
+        """
+        return calculate_total_contributions(contrib_graph)
+
+    def _calculate_max_streak(self, contrib_graph: list) -> int:
+        """
+        Calculate the maximum (best) contribution streak from contribution graph.
+
+        Args:
+            contrib_graph: List of weeks with contribution data
+
+        Returns:
+            Maximum streak of consecutive days with contributions
+        """
         try:
             all_contributions = []
             for week in contrib_graph:
-                for day in week.get('contributionDays', []):
-                    all_contributions.append(day.get('contributionCount', 0))
+                for day in week.get("contributionDays", []):
+                    all_contributions.append(day.get("contributionCount", 0))
 
-            # Reverse to make newest first
-            all_contributions.reverse()
+            # Keep chronological order for max streak calculation
+            max_streak = 0
+            temp_streak = 0
             for contrib in all_contributions:
                 if contrib > 0:
-                    current_streak += 1
+                    temp_streak += 1
+                    if temp_streak > max_streak:
+                        max_streak = temp_streak
                 else:
-                    break
+                    temp_streak = 0
+            return max_streak
         except Exception:
-            current_streak = 0
+            return 0
 
-        # Use @me for search queries if this is the authenticated user
-        search_username = self._get_search_username(username)
+    def _calculate_total_contributions(self, contrib_graph: list) -> int:
+        """
+        Calculate total contributions from contribution graph.
 
-        pull_requests = {
-            'awaiting_review': self._search_items(
-                f'is:pr state:open review-requested:{search_username}'
-            ),
-            'open': self._search_items(
-                f'is:pr state:open author:{search_username}'
-            ),
-            'mentions': self._search_items(
-                f'is:pr state:open mentions:{search_username}'
-            ),
-        }
+        Args:
+            contrib_graph: List of weeks with contribution data
 
-        issues = {
-            'assigned': self._search_items(
-                f'is:issue state:open assignee:{search_username}'
-            ),
-            'created': self._search_items(
-                f'is:issue state:open author:{search_username}'
-            ),
-            'mentions': self._search_items(
-                f'is:issue state:open mentions:{search_username}'
-            ),
-        }
-
-        return {
-            'total_stars': total_stars,
-            'total_forks': total_forks,
-            'total_repos': len(repos),
-            'languages': languages,
-            'contribution_graph': contrib_graph,
-            # Include current streak so it gets cached and reused by display
-            'current_streak': current_streak,
-            'pull_requests': pull_requests,
-            'issues': issues,
-        }
+        Returns:
+            Total contributions across all weeks
+        """
+        try:
+            total = 0
+            for week in contrib_graph:
+                for day in week.get("contributionDays", []):
+                    total += day.get("contributionCount", 0)
+            return total
+        except Exception:
+            return 0
 
     def _get_search_username(self, username: str) -> str:
         """
@@ -348,9 +587,9 @@ class GitHubFetcher(BaseFetcher):
         """
         try:
             # Get the authenticated user's login
-            auth_user = self._gh_api('/user')
-            if auth_user.get('login') == username:
-                return '@me'
+            auth_user = self._gh_api("/user")
+            if auth_user.get("login") == username:
+                return "@me"
         except Exception:
             # If we can't determine auth user, use provided username
             pass
@@ -368,12 +607,12 @@ class GitHubFetcher(BaseFetcher):
         """
         repos = []
         page = 1
-        per_page = 100
+        per_page = REPOS_PER_PAGE
 
         while True:
             endpoint = (
-                f'/users/{username}/repos?page={page}'
-                f'&per_page={per_page}&type=owner&sort=updated'
+                f"/users/{username}/repos?page={page}"
+                f"&per_page={per_page}&type=owner&sort=updated"
             )
             data = self._gh_api(endpoint)
 
@@ -393,6 +632,9 @@ class GitHubFetcher(BaseFetcher):
         """
         Calculate language usage statistics from repositories.
 
+        Uses GitHub API to fetch actual code size (bytes) for each language
+        across all repositories, providing accurate percentages.
+
         Args:
             repos: List of repository data
 
@@ -401,121 +643,118 @@ class GitHubFetcher(BaseFetcher):
         """
         from collections import defaultdict
 
-        # First pass: collect all language occurrences with their casing
-        language_occurrences: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: defaultdict(int))
+        if not repos:
+            return {}
 
-        for repo in repos:
-            language = repo.get('language')
-            if language:
-                # Group by lowercase name, but keep track of different casings
-                normalized = language.lower()
-                language_occurrences[normalized][language] += 1
+        # Aggregate language bytes across all repositories
+        language_bytes: Dict[str, int] = defaultdict(int)
 
-        # Second pass: choose canonical casing (most frequent) and sum counts
-        language_counts: Dict[str, int] = {}
+        # Fetch detailed language stats for each repo in parallel
+        # Limit to 50 repos to avoid excessive API calls/rate limits
+        repos_to_analyze = repos[:50]
 
-        for normalized, casings in language_occurrences.items():
-            # Find the most common casing
-            canonical_name = max(casings.items(), key=lambda x: x[1])[0]
-            # Sum all occurrences for this language
-            total_count = sum(casings.values())
-            language_counts[canonical_name] = total_count
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_languages = {
+                executor.submit(self._fetch_repo_languages, repo): repo
+                for repo in repos_to_analyze
+            }
+
+            for future in future_languages:
+                try:
+                    repo_languages = future.result(timeout=API_TIMEOUT_MEDIUM)
+                    for lang, bytes_count in repo_languages.items():
+                        language_bytes[lang] += bytes_count
+                except Exception:
+                    # If we can't get detailed stats, fall back to basic language
+                    repo = future_languages[future]
+                    basic_lang = repo.get("language")
+                    if basic_lang:
+                        # Assign a small default weight for repos without detailed stats
+                        language_bytes[basic_lang] += 1
 
         # Calculate percentages
-        total = sum(language_counts.values())
-        if total == 0:
+        total_bytes = sum(language_bytes.values())
+        if total_bytes == 0:
             return {}
 
         language_percentages = {
-            lang: (count / total) * 100
-            for lang, count in language_counts.items()
+            lang: (byte_count / total_bytes) * 100
+            for lang, byte_count in language_bytes.items()
         }
 
         return language_percentages
 
-    def _search_items(self, query: str, per_page: int = 5) -> Dict[str, Any]:
-        """Search issues and PRs using GitHub CLI search command."""
+    def _fetch_repo_languages(self, repo: dict) -> Dict[str, int]:
+        """
+        Fetch detailed language statistics for a single repository.
+
+        Args:
+            repo: Repository data dictionary
+
+        Returns:
+            Dictionary mapping language names to byte counts
+        """
         try:
-            # Determine search type based on query
-            search_type = 'prs' if 'is:pr' in query else 'issues'
+            owner = repo.get("owner", {}).get("login")
+            repo_name = repo.get("name")
+            if not owner or not repo_name:
+                return {}
 
-            # Remove is:pr/issue from query as it's implied by search type
-            query = query.replace('is:pr ', '').replace('is:issue ', '')
+            endpoint = f"/repos/{owner}/{repo_name}/languages"
+            data = self._gh_api(endpoint)
+            return data if data else {}
+        except Exception:
+            return {}
 
-            # Parse query string and convert to command-line flags
-            flags = self._parse_search_query(query)
+    def _search_items(
+        self, query: str, per_page: int = SEARCH_RESULTS_PER_PAGE
+    ) -> Dict[str, Any]:
+        """
+        Search issues and PRs using GitHub Search REST API.
 
-            # Build command with proper flags
-            cmd = ['gh', 'search', search_type] + flags + [
-                '--limit', str(per_page),
-                '--json', 'number,title,repository,url,state'
-            ]
+        Uses REST API instead of CLI search to get accurate total_count.
+        Retries on timeout and network errors.
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=self._build_env()
-            )
-            if result.returncode != 0:
-                return {'total_count': 0, 'items': []}
+        Args:
+            query: Search query string
+            per_page: Number of results to return
 
-            data = json.loads(result.stdout)
+        Returns:
+            Dictionary with total_count (accurate) and items list
+        """
+        try:
+            # URL encode the query
+            from urllib.parse import quote
+
+            encoded_query = quote(query)
+
+            # Use GitHub Search API - returns accurate total_count
+            # The /search/issues endpoint returns both issues and PRs
+            endpoint = f"/search/issues?q={encoded_query}&per_page={per_page}"
+
+            data = self._gh_api(endpoint)
+
             items = []
-            for item in data[:per_page]:
-                repo_info = item.get('repository', {})
-                repo_name = repo_info.get(
-                    'nameWithOwner',
-                    repo_info.get('name', '')
+            for item in data.get("items", [])[:per_page]:
+                repo_info = item.get("repository", {})
+                repo_name = repo_info.get("full_name", "")
+                items.append(
+                    {
+                        "title": item.get("title", ""),
+                        "repo": repo_name,
+                        "url": item.get("html_url", ""),
+                        "number": item.get("number"),
+                        "state": item.get("state", ""),
+                    }
                 )
-                items.append({
-                    'title': item.get('title', ''),
-                    'repo': repo_name,
-                    'url': item.get('url', ''),
-                    'number': item.get('number')
-                })
 
-            # gh search doesn't return total count in JSON, use item count
-            return {
-                'total_count': len(items),
-                'items': items
-            }
-        except (subprocess.TimeoutExpired, json.JSONDecodeError):
-            return {'total_count': 0, 'items': []}
+            # REST API returns accurate total_count
+            total_count = data.get("total_count", 0)
 
-    def _parse_search_query(self, query: str) -> list:
-        """Parse search query string into command-line flags."""
-        flags = []
-        parts = query.split()
-
-        for part in parts:
-            if ':' in part:
-                key, value = part.split(':', 1)
-                if key == 'assignee':
-                    flags.extend(['--assignee', value])
-                elif key == 'author':
-                    flags.extend(['--author', value])
-                elif key == 'mentions':
-                    flags.extend(['--mentions', value])
-                elif key == 'review-requested':
-                    flags.extend(['--review-requested', value])
-                elif key == 'state':
-                    flags.extend(['--state', value])
-                elif key == 'is':
-                    # Handle is:pr and is:issue
-                    # For prs search, we don't need this flag
-                    # For issues search, is:issue is default
-                    pass
-                else:
-                    # For other qualifiers, add as search term
-                    flags.append(part)
-            else:
-                # Add as general search term
-                flags.append(part)
-
-        return flags
+            return {"total_count": total_count, "items": items}
+        except Exception:
+            # Return empty result on any error after retries
+            return {"total_count": 0, "items": []}
 
     @staticmethod
     def _extract_repo_name(repo_url: str) -> str:
@@ -523,7 +762,7 @@ class GitHubFetcher(BaseFetcher):
         if not repo_url:
             return ""
 
-        parts = repo_url.rstrip('/').split('/')
+        parts = repo_url.rstrip("/").split("/")
         if len(parts) >= 2:
             return f"{parts[-2]}/{parts[-1]}"
         return repo_url
@@ -535,7 +774,7 @@ class GitHubFetcher(BaseFetcher):
         Returns:
             Dictionary containing rate limit info
         """
-        return self._gh_api('/rate_limit')
+        return self._gh_api("/rate_limit")
 
     def _fetch_contribution_graph(self, username: str) -> list:
         """
@@ -565,20 +804,24 @@ class GitHubFetcher(BaseFetcher):
 
         try:
             result = subprocess.run(
-                ['gh', 'api', 'graphql', '-f', f'query={query}'],
+                ["gh", "api", "graphql", "-f", f"query={query}"],
                 capture_output=True,
                 text=True,
-                timeout=30,
-                env=self._build_env()
+                timeout=API_TIMEOUT_LONG,
+                env=self._build_env(),
             )
 
             if result.returncode != 0:
                 return []
 
             data = json.loads(result.stdout)
-            weeks = data.get('data', {}).get('user', {}).get(
-                'contributionsCollection', {}).get(
-                    'contributionCalendar', {}).get('weeks', [])
+            weeks = (
+                data.get("data", {})
+                .get("user", {})
+                .get("contributionsCollection", {})
+                .get("contributionCalendar", {})
+                .get("weeks", [])
+            )
             return weeks
 
         except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
@@ -588,8 +831,9 @@ class GitHubFetcher(BaseFetcher):
 class GitLabFetcher(BaseFetcher):
     """Fetches GitLab user data and statistics."""
 
-    def __init__(self, base_url: str = "https://gitlab.com",
-                 token: Optional[str] = None):
+    def __init__(
+        self, base_url: str = "https://gitlab.com", token: Optional[str] = None
+    ):
         """
         Initialize the GitLab fetcher.
 
@@ -598,7 +842,7 @@ class GitLabFetcher(BaseFetcher):
             token: Optional GitLab personal access token
         """
         super().__init__(token)
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.api_base = f"{self.base_url}/api/v4"
 
     def _build_env(self) -> dict:
@@ -610,17 +854,17 @@ class GitLabFetcher(BaseFetcher):
         """
         env = os.environ.copy()
         if self.token:
-            env['GITLAB_TOKEN'] = self.token
+            env["GITLAB_TOKEN"] = self.token
         return env
 
     def _check_glab_cli(self) -> None:
         """Check if GitLab CLI is installed and authenticated."""
         try:
             result = subprocess.run(
-                ['glab', 'auth', 'status'],
+                ["glab", "auth", "status"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=API_TIMEOUT_SHORT,
             )
             if result.returncode != 0:
                 print("GitLab CLI not authenticated", file=sys.stderr)
@@ -628,8 +872,7 @@ class GitLabFetcher(BaseFetcher):
                 sys.exit(1)
         except FileNotFoundError:
             print("GitLab CLI (glab) not installed", file=sys.stderr)
-            print("Install: https://gitlab.com/gitlab-org/cli",
-                  file=sys.stderr)
+            print("Install: https://gitlab.com/gitlab-org/cli", file=sys.stderr)
             sys.exit(1)
         except subprocess.TimeoutExpired:
             print("Error: glab CLI timeout", file=sys.stderr)
@@ -644,23 +887,31 @@ class GitLabFetcher(BaseFetcher):
         """
         try:
             result = subprocess.run(
-                ['glab', 'api', '/user'],
+                ["glab", "api", "/user"],
                 capture_output=True,
                 text=True,
-                timeout=10,
-                env=self._build_env()
+                timeout=API_TIMEOUT_MEDIUM,
+                env=self._build_env(),
             )
             if result.returncode != 0:
                 raise Exception("Failed to get user info")
 
             data = json.loads(result.stdout)
-            return data.get('username', '')
+            return data.get("username", "")
         except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
             raise Exception("Could not determine authenticated user")
 
+    @retry_on_failure(
+        max_attempts=3,
+        initial_delay=1.0,
+        max_delay=10.0,
+        exceptions=(subprocess.TimeoutExpired, json.JSONDecodeError, OSError),
+    )
     def _api_request(self, endpoint: str) -> Any:
         """
         Make API request to GitLab.
+
+        Retries on timeout, network errors, and JSON parsing failures.
 
         Args:
             endpoint: API endpoint
@@ -668,14 +919,14 @@ class GitLabFetcher(BaseFetcher):
         Returns:
             Parsed JSON response
         """
-        cmd = ['glab', 'api', endpoint]
+        cmd = ["glab", "api", endpoint]
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
-                env=self._build_env()
+                timeout=API_TIMEOUT_LONG,
+                env=self._build_env(),
             )
             if result.returncode != 0:
                 raise Exception(f"API request failed: {result.stderr}")
@@ -695,9 +946,11 @@ class GitLabFetcher(BaseFetcher):
         Returns:
             Dictionary containing user profile data
         """
-        return self._api_request(f'/users?username={username}')[0]
+        return self._api_request(f"/users?username={username}")[0]
 
-    def fetch_user_stats(self, username: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def fetch_user_stats(
+        self, username: str, user_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Fetch detailed statistics for a GitLab user.
 
@@ -711,18 +964,18 @@ class GitLabFetcher(BaseFetcher):
         if not user_data:
             user_data = self.fetch_user_data(username)
 
-        user_id = user_data.get('id')
+        user_id = user_data.get("id")
 
         # Fetch user's projects
-        repos = self._api_request(f'/users/{user_id}/projects')
+        repos = self._api_request(f"/users/{user_id}/projects")
 
-        total_stars = sum(repo.get('star_count', 0) for repo in repos)
-        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
+        total_stars = sum(repo.get("star_count", 0) for repo in repos)
+        total_forks = sum(repo.get("forks_count", 0) for repo in repos)
 
         # Calculate language stats
-        languages = {}
+        languages: dict[str, int] = {}
         for repo in repos:
-            lang = repo.get('language', 'Unknown')
+            lang = repo.get("language", "Unknown")
             if lang in languages:
                 languages[lang] += 1
             else:
@@ -731,13 +984,26 @@ class GitLabFetcher(BaseFetcher):
         # GitLab doesn't have contribution graphs like GitHub
         # Return simplified stats
         return {
-            'total_stars': total_stars,
-            'total_forks': total_forks,
-            'total_repos': len(repos),
-            'languages': languages,
-            'contribution_graph': [],  # Not available
-            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
-            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+            "total_stars": total_stars,
+            "total_forks": total_forks,
+            "total_repos": len(repos),
+            "languages": languages,
+            "contribution_graph": [],  # Not available
+            "total_contributions": 0,  # Not available without contribution graph
+            "pull_requests": {
+                "open": 0,
+                "awaiting_review": 0,
+                "mentions": 0,
+                "draft": 0,
+                "merged": 0,
+                "closed_recently": 0,
+            },
+            "issues": {
+                "assigned": 0,
+                "created": 0,
+                "mentions": 0,
+                "commented": 0,
+            },
         }
 
 
@@ -753,7 +1019,7 @@ class GiteaFetcher(BaseFetcher):
             token: Optional Gitea personal access token
         """
         super().__init__(token)
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.api_base = f"{self.base_url}/api/v1"
 
     def get_authenticated_user(self) -> str:
@@ -768,18 +1034,28 @@ class GiteaFetcher(BaseFetcher):
 
         try:
             import requests
-            headers = {'Authorization': f'token {self.token}'}
+
+            headers = {"Authorization": f"token {self.token}"}
             response = requests.get(
-                f'{self.api_base}/user', headers=headers, timeout=10)
+                f"{self.api_base}/user", headers=headers, timeout=API_TIMEOUT_MEDIUM
+            )
             response.raise_for_status()
             data = response.json()
-            return data.get('login', '')
+            return data.get("login", "")
         except Exception as e:
             raise Exception(f"Could not get authenticated user: {e}")
 
+    @retry_on_failure(
+        max_attempts=3,
+        initial_delay=1.0,
+        max_delay=10.0,
+        exceptions=(OSError,),  # Will catch requests errors wrapped in Exception
+    )
     def _api_request(self, endpoint: str) -> Any:
         """
         Make API request to Gitea.
+
+        Retries on network errors and timeouts.
 
         Args:
             endpoint: API endpoint
@@ -792,9 +1068,11 @@ class GiteaFetcher(BaseFetcher):
 
         try:
             import requests
-            headers = {'Authorization': f'token {self.token}'}
+
+            headers = {"Authorization": f"token {self.token}"}
             response = requests.get(
-                f'{self.api_base}{endpoint}', headers=headers, timeout=30)
+                f"{self.api_base}{endpoint}", headers=headers, timeout=30
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -810,7 +1088,7 @@ class GiteaFetcher(BaseFetcher):
         Returns:
             Dictionary containing user profile data
         """
-        return self._api_request(f'/users/{username}')
+        return self._api_request(f"/users/{username}")
 
     def fetch_user_stats(self, username: str, user_data=None):
         """
@@ -827,15 +1105,15 @@ class GiteaFetcher(BaseFetcher):
             user_data = self.fetch_user_data(username)
 
         # Fetch user's repositories
-        repos = self._api_request(f'/users/{username}/repos')
+        repos = self._api_request(f"/users/{username}/repos")
 
-        total_stars = sum(repo.get('stars_count', 0) for repo in repos)
-        total_forks = sum(repo.get('forks_count', 0) for repo in repos)
+        total_stars = sum(repo.get("stars_count", 0) for repo in repos)
+        total_forks = sum(repo.get("forks_count", 0) for repo in repos)
 
         # Calculate language stats
-        languages = {}
+        languages: dict[str, int] = {}
         for repo in repos:
-            lang = repo.get('language', 'Unknown')
+            lang = repo.get("language", "Unknown")
             if lang and lang in languages:
                 languages[lang] += 1
             elif lang:
@@ -843,20 +1121,35 @@ class GiteaFetcher(BaseFetcher):
 
         # Gitea doesn't have contribution graphs or PR/issue stats like GitHub
         return {
-            'total_stars': total_stars,
-            'total_forks': total_forks,
-            'total_repos': len(repos),
-            'languages': languages,
-            'contribution_graph': [],  # Not available
-            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
-            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+            "total_stars": total_stars,
+            "total_forks": total_forks,
+            "total_repos": len(repos),
+            "languages": languages,
+            "contribution_graph": [],  # Not available
+            "total_contributions": 0,  # Not available without contribution graph
+            "pull_requests": {
+                "open": 0,
+                "awaiting_review": 0,
+                "mentions": 0,
+                "draft": 0,
+                "merged": 0,
+                "closed_recently": 0,
+            },
+            "issues": {
+                "assigned": 0,
+                "created": 0,
+                "mentions": 0,
+                "commented": 0,
+            },
         }
 
 
 class SourcehutFetcher(BaseFetcher):
     """Fetches Sourcehut user data and statistics."""
 
-    def __init__(self, base_url: str = "https://git.sr.ht", token: Optional[str] = None):
+    def __init__(
+        self, base_url: str = "https://git.sr.ht", token: Optional[str] = None
+    ):
         """
         Initialize the Sourcehut fetcher.
 
@@ -865,7 +1158,7 @@ class SourcehutFetcher(BaseFetcher):
             token: Optional Sourcehut personal access token
         """
         super().__init__(token)
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
 
     def get_authenticated_user(self) -> str:
         """
@@ -880,6 +1173,7 @@ class SourcehutFetcher(BaseFetcher):
         # Sourcehut uses GraphQL API
         try:
             import requests
+
             query = """
             query {
                 me {
@@ -887,16 +1181,16 @@ class SourcehutFetcher(BaseFetcher):
                 }
             }
             """
-            headers = {'Authorization': f'Bearer {self.token}'}
+            headers = {"Authorization": f"Bearer {self.token}"}
             response = requests.post(
-                f'{self.base_url}/graphql',
-                json={'query': query},
+                f"{self.base_url}/graphql",
+                json={"query": query},
                 headers=headers,
-                timeout=10
+                timeout=10,
             )
             response.raise_for_status()
             data = response.json()
-            return data.get('data', {}).get('me', {}).get('username', '')
+            return data.get("data", {}).get("me", {}).get("username", "")
         except Exception as e:
             raise Exception(f"Could not get authenticated user: {e}")
 
@@ -924,17 +1218,17 @@ class SourcehutFetcher(BaseFetcher):
         """
         try:
             import requests
-            headers = {
-                'Authorization': f'Bearer {self.token}'} if self.token else {}
+
+            headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
             response = requests.post(
-                f'{self.base_url}/graphql',
-                json={'query': query},
+                f"{self.base_url}/graphql",
+                json={"query": query},
                 headers=headers,
-                timeout=30
+                timeout=30,
             )
             response.raise_for_status()
             data = response.json()
-            return data.get('data', {}).get('user', {})
+            return data.get("data", {}).get("user", {})
         except Exception as e:
             raise Exception(f"Sourcehut API request failed: {e}")
 
@@ -951,11 +1245,24 @@ class SourcehutFetcher(BaseFetcher):
         """
         # Sourcehut has limited public stats, return minimal data
         return {
-            'total_stars': 0,  # Not available
-            'total_forks': 0,  # Not available
-            'total_repos': 0,  # Would need separate API call
-            'languages': {},  # Not available
-            'contribution_graph': [],  # Not available
-            'pull_requests': {'open': 0, 'awaiting_review': 0, 'mentions': 0},
-            'issues': {'assigned': 0, 'created': 0, 'mentions': 0},
+            "total_stars": 0,  # Not available
+            "total_forks": 0,  # Not available
+            "total_repos": 0,  # Would need separate API call
+            "languages": {},  # Not available
+            "contribution_graph": [],  # Not available
+            "total_contributions": 0,  # Not available without contribution graph
+            "pull_requests": {
+                "open": 0,
+                "awaiting_review": 0,
+                "mentions": 0,
+                "draft": 0,
+                "merged": 0,
+                "closed_recently": 0,
+            },
+            "issues": {
+                "assigned": 0,
+                "created": 0,
+                "mentions": 0,
+                "commented": 0,
+            },
         }
