@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
    "requests>=2.0.0",
    "readchar>=4.0.0",
+   "webcolors>=24.11.1"
 ]
 
 [project.optional-dependencies]
