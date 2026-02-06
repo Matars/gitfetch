@@ -67,9 +67,7 @@ class DisplayFormatter:
         self.colors = config_manager.get_ansi_colors()
         self.hex_colors = config_manager.get_colors()
         self.custom_box = custom_box or config_manager.get_custom_box() or "■"
-        self.show_date = (
-            show_date if show_date is not None else config_manager.get_show_date()
-        )
+        self.show_date = show_date if show_date is not None else True
         self.graph_only = graph_only
         self.show_achievements = show_achievements
         self.show_languages = show_languages
@@ -423,7 +421,6 @@ class DisplayFormatter:
     ) -> None:
         """Display full layout with graph and all info sections."""
         left_side = []
-        ANSI_PATTERN = re.compile(r"\033\[[0-9;]*m")
         if self.graph_timeline:
             # Show git timeline graph instead of contribution graph
             try:
@@ -576,6 +573,7 @@ class DisplayFormatter:
         width_constraint: Optional[int] = None,
         include_sections: bool = True,
         spaced: bool = True,
+        stats: Optional[Dict[str, Any]] = None,
     ) -> list:
         """
         Get contribution graph as lines for display.
@@ -1371,8 +1369,8 @@ class DisplayFormatter:
 
         color_code = colors.get(color.lower())
         reset = colors["reset"]
-        if not color_code and color_code in webcolors.names():
-            color_code = hex_to_ansi(webcolors.name_to_hex(color_code))
+        if not color_code and color.lower() in webcolors.names():
+            color_code = hex_to_ansi(webcolors.name_to_hex(color.lower()))
 
         if not self.enable_color or not color_code:
             return text
@@ -1441,7 +1439,7 @@ class DisplayFormatter:
         # Only allow A-Z and space for text mode
         allowed_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ ")
 
-        grid: list[list[str]] = []
+        grid: list[list[int]] = []
         for char in text.upper():
             if char not in allowed_chars:
                 raise ValueError(
