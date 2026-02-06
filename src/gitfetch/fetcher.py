@@ -457,7 +457,8 @@ class GitHubFetcher(BaseFetcher):
 
             thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             future_pr_closed_recently = executor.submit(
-                self._search_items, build_pr_closed_recently(search_username, thirty_days_ago)
+                self._search_items,
+                build_pr_closed_recently(search_username, thirty_days_ago),
             )
             future_issue_assigned = executor.submit(
                 self._search_items, build_issue_assigned(search_username)
@@ -536,55 +537,6 @@ class GitHubFetcher(BaseFetcher):
             Total contributions across all weeks
         """
         return calculate_total_contributions(contrib_graph)
-
-    def _calculate_max_streak(self, contrib_graph: list) -> int:
-        """
-        Calculate the maximum (best) contribution streak from contribution graph.
-
-        Args:
-            contrib_graph: List of weeks with contribution data
-
-        Returns:
-            Maximum streak of consecutive days with contributions
-        """
-        try:
-            all_contributions = []
-            for week in contrib_graph:
-                for day in week.get("contributionDays", []):
-                    all_contributions.append(day.get("contributionCount", 0))
-
-            # Keep chronological order for max streak calculation
-            max_streak = 0
-            temp_streak = 0
-            for contrib in all_contributions:
-                if contrib > 0:
-                    temp_streak += 1
-                    if temp_streak > max_streak:
-                        max_streak = temp_streak
-                else:
-                    temp_streak = 0
-            return max_streak
-        except Exception:
-            return 0
-
-    def _calculate_total_contributions(self, contrib_graph: list) -> int:
-        """
-        Calculate total contributions from contribution graph.
-
-        Args:
-            contrib_graph: List of weeks with contribution data
-
-        Returns:
-            Total contributions across all weeks
-        """
-        try:
-            total = 0
-            for week in contrib_graph:
-                for day in week.get("contributionDays", []):
-                    total += day.get("contributionCount", 0)
-            return total
-        except Exception:
-            return 0
 
     def _get_search_username(self, username: str) -> str:
         """
@@ -1047,7 +999,9 @@ class GiteaFetcher(BaseFetcher):
             return data.get("login", "")
         except Exception as e:
             # Redact token from error message
-            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            error_msg = redact_sensitive_info(
+                str(e), [self.token] if self.token else None
+            )
             raise Exception(f"Could not get authenticated user: {error_msg}")
 
     @retry_on_failure(
@@ -1082,7 +1036,9 @@ class GiteaFetcher(BaseFetcher):
             return response.json()
         except Exception as e:
             # Redact token from error message
-            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            error_msg = redact_sensitive_info(
+                str(e), [self.token] if self.token else None
+            )
             raise Exception(f"Gitea API request failed: {error_msg}")
 
     def fetch_user_data(self, username: str) -> Dict[str, Any]:
@@ -1200,7 +1156,9 @@ class SourcehutFetcher(BaseFetcher):
             return data.get("data", {}).get("me", {}).get("username", "")
         except Exception as e:
             # Redact token from error message
-            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            error_msg = redact_sensitive_info(
+                str(e), [self.token] if self.token else None
+            )
             raise Exception(f"Could not get authenticated user: {error_msg}")
 
     def fetch_user_data(self, username: str) -> Dict[str, Any]:
@@ -1240,7 +1198,9 @@ class SourcehutFetcher(BaseFetcher):
             return data.get("data", {}).get("user", {})
         except Exception as e:
             # Redact token from error message
-            error_msg = redact_sensitive_info(str(e), [self.token] if self.token else None)
+            error_msg = redact_sensitive_info(
+                str(e), [self.token] if self.token else None
+            )
             raise Exception(f"Sourcehut API request failed: {error_msg}")
 
     def fetch_user_stats(self, username: str, user_data=None):
