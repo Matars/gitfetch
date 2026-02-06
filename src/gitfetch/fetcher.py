@@ -9,7 +9,6 @@ from functools import wraps
 import subprocess
 import json
 import logging
-import sys
 import os
 import re
 import time
@@ -246,7 +245,12 @@ class GitHubFetcher(BaseFetcher):
         return env
 
     def _check_gh_cli(self) -> None:
-        """Check if GitHub CLI is installed and authenticated."""
+        """Check if GitHub CLI is installed and authenticated.
+
+        Raises:
+            AuthenticationError: If gh CLI is not authenticated
+            APIError: If gh CLI is not installed or times out
+        """
         try:
             result = subprocess.run(
                 ["gh", "auth", "status"],
@@ -255,23 +259,21 @@ class GitHubFetcher(BaseFetcher):
                 timeout=API_TIMEOUT_SHORT,
             )
             if result.returncode != 0:
-                print("\n⚠️  GitHub CLI is not authenticated!", file=sys.stderr)
-                print("Please run: gh auth login", file=sys.stderr)
-                print("Then try gitfetch again.\n", file=sys.stderr)
-                sys.exit(1)
+                raise AuthenticationError(
+                    "GitHub CLI is not authenticated",
+                    hint="Run 'gh auth login' and try gitfetch again",
+                )
         except FileNotFoundError:
-            print("\n❌ GitHub CLI (gh) is not installed!", file=sys.stderr)
-            print("\nInstall it with:", file=sys.stderr)
-            print("  macOS: brew install gh", file=sys.stderr)
-            print(
-                "  Linux: See https://github.com/cli/cli#installation", file=sys.stderr
+            raise APIError(
+                "GitHub CLI (gh) is not installed",
+                hint="Install with 'brew install gh' (macOS) or see "
+                "https://github.com/cli/cli#installation, then run 'gh auth login'",
             )
-            print("\nThen run: gh auth login", file=sys.stderr)
-            print("And try gitfetch again.\n", file=sys.stderr)
-            sys.exit(1)
         except subprocess.TimeoutExpired:
-            print("Error: gh CLI command timed out", file=sys.stderr)
-            sys.exit(1)
+            raise APIError(
+                "gh CLI command timed out",
+                hint="Check your network connection and try again",
+            )
 
     def get_authenticated_user(self) -> str:
         """
@@ -813,7 +815,12 @@ class GitLabFetcher(BaseFetcher):
         return env
 
     def _check_glab_cli(self) -> None:
-        """Check if GitLab CLI is installed and authenticated."""
+        """Check if GitLab CLI is installed and authenticated.
+
+        Raises:
+            AuthenticationError: If glab CLI is not authenticated
+            APIError: If glab CLI is not installed or times out
+        """
         try:
             result = subprocess.run(
                 ["glab", "auth", "status"],
@@ -822,16 +829,21 @@ class GitLabFetcher(BaseFetcher):
                 timeout=API_TIMEOUT_SHORT,
             )
             if result.returncode != 0:
-                print("GitLab CLI not authenticated", file=sys.stderr)
-                print("Please run: glab auth login", file=sys.stderr)
-                sys.exit(1)
+                raise AuthenticationError(
+                    "GitLab CLI is not authenticated",
+                    hint="Run 'glab auth login' and try gitfetch again",
+                )
         except FileNotFoundError:
-            print("GitLab CLI (glab) not installed", file=sys.stderr)
-            print("Install: https://gitlab.com/gitlab-org/cli", file=sys.stderr)
-            sys.exit(1)
+            raise APIError(
+                "GitLab CLI (glab) is not installed",
+                hint="Install from https://gitlab.com/gitlab-org/cli, "
+                "then run 'glab auth login'",
+            )
         except subprocess.TimeoutExpired:
-            print("Error: glab CLI timeout", file=sys.stderr)
-            sys.exit(1)
+            raise APIError(
+                "glab CLI command timed out",
+                hint="Check your network connection and try again",
+            )
 
     def get_authenticated_user(self) -> str:
         """
