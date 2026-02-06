@@ -1,6 +1,5 @@
-# No Python dependencies required
+# Runtime dependencies
 # Requires GitHub CLI (gh) to be installed and authenticated
 requests>=2.0.0
 readchar>=4.0.0
-pytest>=7.0.0
 webcolors>=24.11.1
