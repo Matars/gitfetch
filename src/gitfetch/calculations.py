@@ -1,5 +1,4 @@
 from typing import Dict, Any, List, Tuple
-from .constants import API_TIMEOUT_MEDIUM
 
 
 def calculate_current_streak(contrib_graph: List[Dict[str, Any]]) -> int:
@@ -93,25 +92,33 @@ def calculate_streaks(weeks_data: List[Dict[str, Any]]) -> Tuple[int, int]:
     if not weeks_data:
         return 0, 0
 
+    # Flatten contributions in chronological order
     all_contributions = []
     for week in weeks_data:
         for day in week.get("contributionDays", []):
             all_contributions.append(day.get("contributionCount", 0))
 
-    all_contributions.reverse()
+    if not all_contributions:
+        return 0, 0
 
+    # Calculate current streak from newest day backwards
     current_streak = 0
-    max_streak = 0
-    temp_streak = 0
-
-    for contrib in all_contributions:
+    for contrib in reversed(all_contributions):
         if contrib > 0:
             current_streak += 1
+        else:
+            break
+
+    # Calculate max streak across all contributions (chronological order)
+    max_streak = 0
+    temp_streak = 0
+    for contrib in all_contributions:
+        if contrib > 0:
             temp_streak += 1
             if temp_streak > max_streak:
                 max_streak = temp_streak
         else:
-            break
+            temp_streak = 0
 
     return current_streak, max_streak
 
@@ -129,15 +136,15 @@ def get_contribution_color_level(count: int) -> str:
         String color level from '0' to '4'
     """
     if count == 0:
-        return '0'
+        return "0"
     elif count <= 2:
-        return '1'
+        return "1"
     elif count <= 5:
-        return '2'
+        return "2"
     elif count <= 9:
-        return '3'
+        return "3"
     else:
-        return '4'
+        return "4"
 
 
 def calculate_language_percentages(language_bytes: Dict[str, int]) -> Dict[str, float]:
