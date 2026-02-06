@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
 
-from .constants import DEFAULT_CACHE_EXPIRY_MINUTES
+from .constants import DEFAULT_CACHE_EXPIRY_MINUTES, MAX_STALE_CACHE_MINUTES
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,11 @@ logger = logging.getLogger(__name__)
 class CacheManager:
     """Manages local caching of GitHub data using SQLite."""
 
-    def __init__(self, cache_expiry_minutes: int = DEFAULT_CACHE_EXPIRY_MINUTES,
-                 cache_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        cache_expiry_minutes: int = DEFAULT_CACHE_EXPIRY_MINUTES,
+        cache_dir: Optional[Path] = None,
+    ):
         """
         Initialize the cache manager.
 
@@ -28,8 +31,7 @@ class CacheManager:
                 (default: ~/.local/share/gitfetch)
         """
         self.cache_expiry_minutes = cache_expiry_minutes
-        self.CACHE_DIR = cache_dir or (
-            Path.home() / ".local" / "share" / "gitfetch")
+        self.CACHE_DIR = cache_dir or (Path.home() / ".local" / "share" / "gitfetch")
         self.DB_FILE = self.CACHE_DIR / "cache.db"
         self._ensure_cache_dir()
         self._init_database()
@@ -43,16 +45,16 @@ class CacheManager:
         self._ensure_cache_dir()
         with sqlite3.connect(self.DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     username TEXT PRIMARY KEY,
                     user_data TEXT NOT NULL,
                     stats_data TEXT NOT NULL,
                     cached_at TIMESTAMP NOT NULL
                 )
-            ''')
+            """)
             cursor.execute(
-                'CREATE INDEX IF NOT EXISTS idx_cached_at ON users(cached_at)'
+                "CREATE INDEX IF NOT EXISTS idx_cached_at ON users(cached_at)"
             )
             conn.commit()
 
@@ -82,9 +84,9 @@ class CacheManager:
         entry = self.get_cached_entry(username)
         return entry[1] if entry else None
 
-    def get_cached_entry(self, username: str) -> Optional[
-            tuple[Dict[str, Any], Dict[str, Any]]
-    ]:
+    def get_cached_entry(
+        self, username: str
+    ) -> Optional[tuple[Dict[str, Any], Dict[str, Any]]]:
         """
         Retrieve both user data and stats if available and not expired.
 
@@ -98,9 +100,9 @@ class CacheManager:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'SELECT user_data, stats_data, cached_at FROM users '
-                    'WHERE username = ?',
-                    (username,)
+                    "SELECT user_data, stats_data, cached_at FROM users "
+                    "WHERE username = ?",
+                    (username,),
                 )
                 row = cursor.fetchone()
 
@@ -117,9 +119,9 @@ class CacheManager:
         except (sqlite3.Error, json.JSONDecodeError, ValueError):
             return None
 
-    def get_stale_cached_entry(self, username: str) -> Optional[
-            tuple[Dict[str, Any], Dict[str, Any], datetime]
-    ]:
+    def get_stale_cached_entry(
+        self, username: str
+    ) -> Optional[tuple[Dict[str, Any], Dict[str, Any], datetime]]:
         """
         Retrieve cached data even if expired (for background refresh).
 
@@ -133,9 +135,9 @@ class CacheManager:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'SELECT user_data, stats_data, cached_at FROM users '
-                    'WHERE username = ?',
-                    (username,)
+                    "SELECT user_data, stats_data, cached_at FROM users "
+                    "WHERE username = ?",
+                    (username,),
                 )
                 row = cursor.fetchone()
 
@@ -149,9 +151,7 @@ class CacheManager:
         except (sqlite3.Error, json.JSONDecodeError, ValueError):
             return None
 
-    def get_stale_cached_user_data(
-        self, username: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_stale_cached_user_data(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached user data even if expired.
 
@@ -164,9 +164,7 @@ class CacheManager:
         entry = self.get_stale_cached_entry(username)
         return entry[0] if entry else None
 
-    def get_stale_cached_stats(self, username: str) -> Optional[
-            Dict[str, Any]
-    ]:
+    def get_stale_cached_stats(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve cached statistics even if expired.
 
@@ -195,8 +193,34 @@ class CacheManager:
         _, _, cached_at = entry
         return self._is_cache_expired(cached_at)
 
-    def cache_user_data(self, username: str, user_data: Dict[str, Any],
-                        stats: Dict[str, Any]) -> None:
+    def is_cache_too_stale(self, username: str) -> bool:
+        """
+        Check if cached data is too old to display even as stale data.
+
+        Uses MAX_STALE_CACHE_MINUTES as the upper bound. Data older than
+        this should not be shown to the user, even while a background
+        refresh is in progress, because the contribution graph would be
+        misleadingly outdated.
+
+        Args:
+            username: GitHub username
+
+        Returns:
+            True if cache is older than MAX_STALE_CACHE_MINUTES, False otherwise
+        """
+        entry = self.get_stale_cached_entry(username)
+        if not entry:
+            return True  # No cache at all — treat as too stale
+        _, _, cached_at = entry
+        try:
+            age_limit = datetime.now() - timedelta(minutes=MAX_STALE_CACHE_MINUTES)
+        except OverflowError:
+            return False
+        return cached_at < age_limit
+
+    def cache_user_data(
+        self, username: str, user_data: Dict[str, Any], stats: Dict[str, Any]
+    ) -> None:
         """
         Cache user data and statistics.
 
@@ -208,16 +232,19 @@ class CacheManager:
         try:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT OR REPLACE INTO users
                     (username, user_data, stats_data, cached_at)
                     VALUES (?, ?, ?, ?)
-                ''', (
-                    username,
-                    json.dumps(user_data),
-                    json.dumps(stats),
-                    datetime.now().isoformat()
-                ))
+                """,
+                    (
+                        username,
+                        json.dumps(user_data),
+                        json.dumps(stats),
+                        datetime.now().isoformat(),
+                    ),
+                )
                 conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache write failed for user '{username}': {e}")
@@ -227,7 +254,7 @@ class CacheManager:
         try:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute('DELETE FROM users')
+                cursor.execute("DELETE FROM users")
                 conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache clear failed: {e}")
@@ -242,7 +269,7 @@ class CacheManager:
         try:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+                cursor.execute("DELETE FROM users WHERE username = ?", (username,))
                 conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"Cache clear failed for user '{username}': {e}")
@@ -290,7 +317,7 @@ class CacheManager:
         try:
             with sqlite3.connect(self.DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT username, cached_at FROM users')
+                cursor.execute("SELECT username, cached_at FROM users")
                 rows = cursor.fetchall()
 
             result = []
@@ -299,7 +326,9 @@ class CacheManager:
                     cached_at = datetime.fromisoformat(row[1])
                     result.append((row[0], cached_at))
                 except ValueError:
-                    logger.warning(f"Invalid cache timestamp for user '{row[0]}': {row[1]}")
+                    logger.warning(
+                        f"Invalid cache timestamp for user '{row[0]}': {row[1]}"
+                    )
                     continue
             return result
         except sqlite3.Error as e:
@@ -318,34 +347,30 @@ class CacheManager:
                 cursor = conn.cursor()
 
                 # Get total entries
-                cursor.execute('SELECT COUNT(*) FROM users')
+                cursor.execute("SELECT COUNT(*) FROM users")
                 total = cursor.fetchone()[0]
 
                 # Get oldest and newest entries
                 cursor.execute(
-                    'SELECT username, cached_at FROM users '
-                    'ORDER BY cached_at ASC LIMIT 1'
+                    "SELECT username, cached_at FROM users "
+                    "ORDER BY cached_at ASC LIMIT 1"
                 )
                 oldest = cursor.fetchone()
 
                 cursor.execute(
-                    'SELECT username, cached_at FROM users '
-                    'ORDER BY cached_at DESC LIMIT 1'
+                    "SELECT username, cached_at FROM users "
+                    "ORDER BY cached_at DESC LIMIT 1"
                 )
                 newest = cursor.fetchone()
 
             return {
                 "total_entries": total,
                 "oldest_entry": oldest[0] if oldest else None,
-                "newest_entry": newest[0] if newest else None
+                "newest_entry": newest[0] if newest else None,
             }
         except sqlite3.Error as e:
             logger.warning(f"Failed to get cache stats: {e}")
-            return {
-                "total_entries": 0,
-                "oldest_entry": None,
-                "newest_entry": None
-            }
+            return {"total_entries": 0, "oldest_entry": None, "newest_entry": None}
 
     def _execute_query(self, query: str, params: tuple = ()) -> Optional[Any]:
         """

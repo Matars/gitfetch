@@ -15,6 +15,7 @@ API_TIMEOUT_RELEASE = 3
 # Cache defaults
 DEFAULT_CACHE_EXPIRY_MINUTES = 15
 MAX_CACHE_EXPIRY_MINUTES = 1440  # 24 hours
+MAX_STALE_CACHE_MINUTES = 1440  # Maximum age for stale cache display (24 hours)
 
 # Pagination
 REPOS_PER_PAGE = 100

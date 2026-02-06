@@ -469,33 +469,36 @@ def _fetch_and_display_data(
             formatter.display(username, user_data, stats, spaced=spaced)
             return 0
 
-        # Try stale cache for immediate display
-        stale_user_data = cache_manager.get_stale_cached_user_data(username)
-        stale_stats = cache_manager.get_stale_cached_stats(username)
+        # Try stale cache for immediate display, but only if it's not
+        # too old. Very stale data (e.g., from a previous month) would
+        # show a misleadingly outdated contribution graph.
+        if not cache_manager.is_cache_too_stale(username):
+            stale_user_data = cache_manager.get_stale_cached_user_data(username)
+            stale_stats = cache_manager.get_stale_cached_stats(username)
 
-        if stale_user_data is not None and stale_stats is not None:
-            formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
+            if stale_user_data is not None and stale_stats is not None:
+                formatter.display(username, stale_user_data, stale_stats, spaced=spaced)
 
-            # Spawn background refresh process
-            try:
-                proc = subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-m",
-                        "gitfetch.cli",
-                        "--background-refresh",
-                        username,
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    stdin=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-                _background_processes.append(proc)
-            except Exception as e:
-                logger.warning(f"Background refresh subprocess spawn failed: {e}")
+                # Spawn background refresh process
+                try:
+                    proc = subprocess.Popen(
+                        [
+                            sys.executable,
+                            "-m",
+                            "gitfetch.cli",
+                            "--background-refresh",
+                            username,
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    _background_processes.append(proc)
+                except Exception as e:
+                    logger.warning(f"Background refresh subprocess spawn failed: {e}")
 
-            return 0
+                return 0
 
     # Either no_cache or no valid cache so fetch fresh data
     def fetch_data():
