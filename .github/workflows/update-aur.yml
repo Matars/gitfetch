@@ -3,6 +3,7 @@ name: Update AUR Package
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   update-aur:
