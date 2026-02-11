@@ -3,6 +3,7 @@ Command-line interface for gitfetch
 """
 
 import argparse
+import os
 import sys
 import subprocess
 from typing import Optional
@@ -43,6 +44,19 @@ def _background_refresh_cache_subprocess(username: str) -> None:
     except Exception:
         # Silent fail - this is background refresh
         pass
+
+
+def _debug_enabled() -> bool:
+    """Return True when debug mode is enabled via env var."""
+    value = os.environ.get('DEBUG')
+    if value is None:
+        # Backward compatibility with older env var name.
+        value = os.environ.get('GITFETCH_DEBUG')
+
+    if value is None:
+        return False
+
+    return value.strip().lower() not in {'', '0', 'false', 'no', 'off'}
 
 
 def parse_args() -> argparse.Namespace:
@@ -464,9 +478,8 @@ def main() -> int:
             # (useful when users report errors from package builds / other
             # environments where the short error message is not enough).
             try:
-                import os
                 import traceback
-                if os.environ.get('GITFETCH_DEBUG'):
+                if _debug_enabled():
                     traceback.print_exc()
                 else:
                     print(f"Error: {e}", file=sys.stderr)
