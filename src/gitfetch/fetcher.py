@@ -542,42 +542,69 @@ class GitHubFetcher(BaseFetcher):
         Returns:
             List of weeks with contribution data
         """
-        # GraphQL query for contribution calendar (inline username)
-        query = f'''{{
-          user(login: "{username}") {{
-            contributionsCollection(includePrivate: true) {{
-              contributionCalendar {{
-                weeks {{
-                  contributionDays {{
-                    contributionCount
-                    date
+        queries = [
+            # Preferred query: include private contributions when available.
+            f'''{{
+              user(login: "{username}") {{
+                contributionsCollection(includePrivate: true) {{
+                  contributionCalendar {{
+                    weeks {{
+                      contributionDays {{
+                        contributionCount
+                        date
+                      }}
+                    }}
                   }}
                 }}
               }}
-            }}
-          }}
-        }}'''
+            }}''',
+            # Fallback query for auth/scope combinations where includePrivate
+            # can fail.
+            f'''{{
+              user(login: "{username}") {{
+                contributionsCollection {{
+                  contributionCalendar {{
+                    weeks {{
+                      contributionDays {{
+                        contributionCount
+                        date
+                      }}
+                    }}
+                  }}
+                }}
+              }}
+            }}''',
+        ]
 
-        try:
-            result = subprocess.run(
-                ['gh', 'api', 'graphql', '-f', f'query={query}'],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=self._build_env()
-            )
+        for query in queries:
+            try:
+                result = subprocess.run(
+                    ['gh', 'api', 'graphql', '-f', f'query={query}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=self._build_env()
+                )
 
-            if result.returncode != 0:
-                return []
+                if result.returncode != 0:
+                    continue
 
-            data = json.loads(result.stdout)
-            weeks = data.get('data', {}).get('user', {}).get(
-                'contributionsCollection', {}).get(
-                    'contributionCalendar', {}).get('weeks', [])
-            return weeks
+                data = json.loads(result.stdout)
+                weeks = data.get('data', {}).get('user', {}).get(
+                    'contributionsCollection', {}).get(
+                        'contributionCalendar', {}).get('weeks', None)
 
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
-            return []
+                if isinstance(weeks, list):
+                    if data.get('errors'):
+                        if weeks:
+                            return weeks
+                        continue
+                    return weeks
+
+            except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+                continue
+
+        return []
 
 
 class GitLabFetcher(BaseFetcher):
