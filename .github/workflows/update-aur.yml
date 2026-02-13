@@ -21,25 +21,53 @@ jobs:
           VERSION=$(grep '^version =' gitfetch/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Checkout AUR repo
-        uses: actions/checkout@v4
-        with:
-          repository: Matars/aur-gitfetch
-          token: ${{ secrets.AUR_TAP_TOKEN }}
-          path: aur-repo
+      - name: Install AUR tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git
+
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          echo "Host aur.archlinux.org" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/aur_key" >> ~/.ssh/config
+          echo "  User aur" >> ~/.ssh/config
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Clone AUR package
+        run: |
+          git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
 
       - name: Update PKGBUILD
         run: |
           cd aur-repo
           VERSION=${{ steps.get_version.outputs.version }}
+          
+          SOURCE_URL="https://github.com/Matars/gitfetch/archive/refs/tags/v${VERSION}.tar.gz"
+          SHA256=$(curl -sL "$SOURCE_URL" | sha256sum | awk '{print $1}')
+          
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s|^source=.*|source=(\"$SOURCE_URL\")|" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('$SHA256')/" PKGBUILD
 
-      - name: Commit and push
+      - name: Generate .SRCINFO
         run: |
           cd aur-repo
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add PKGBUILD
-          git commit -m "Update gitfetch to v${{ steps.get_version.outputs.version }}"
+          docker run --rm -v $(pwd):/pkg archlinux:latest /bin/bash -c "
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm namcap
+            cd /pkg
+            makepkg --printsrcinfo > .SRCINFO
+          "
+
+      - name: Commit and push to AUR
+        run: |
+          cd aur-repo
+          git config user.name "Matar"
+          git config user.email "khaledmatar19733@gmail.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update gitfetch-python to v${{ steps.get_version.outputs.version }}"
           git push

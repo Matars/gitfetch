@@ -13,9 +13,9 @@
         python = pkgs.python313;
         pythonPackages = python.pkgs;
 
-        myPackage = pythonPackages.buildPythonPackage {
+        myPackage = pythonPackages.buildPythonPackage rec {
           pname = "gitfetch";
-          version = "1.3.2";
+          version = (builtins.fromTOML (builtins.readFile ./pyproject.toml)).project.version;
           src = ./.;
           
           # Main dependencies
