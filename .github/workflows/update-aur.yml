@@ -12,7 +12,10 @@ jobs:
 
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm git openssh curl
+        run: |
+          # Disable pacman sandbox to avoid seccomp issues in containers
+          sed -i 's/^#\?DisableSandboxSyscalls.*/DisableSandboxSyscalls/' /etc/pacman.conf
+          pacman -Syu --noconfirm git openssh curl base-devel
 
       - name: Checkout main repo
         uses: actions/checkout@v4
@@ -23,43 +26,39 @@ jobs:
           VERSION=$(grep '^version =' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update PKGBUILD and .SRCINFO
+      - name: Update PKGBUILD and generate .SRCINFO
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
           cd .github/aur
-          
+
           SOURCE_URL="https://github.com/Matars/gitfetch/archive/refs/tags/v${VERSION}.tar.gz"
           SHA256=$(curl -sL "$SOURCE_URL" | sha256sum | awk '{print $1}')
-          
+
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s|source=.*|source=(\"\$pkgname-\$pkgver.tar.gz::$SOURCE_URL\")|" PKGBUILD
           sed -i "s/^sha256sums=.*/sha256sums=('$SHA256')/" PKGBUILD
-          
-          sed -i "s/pkgver = .*/pkgver = $VERSION/" .SRCINFO
-          sed -i "s/pkgrel = .*/pkgrel = 1/" .SRCINFO
-          sed -i "s|source = .*|source = gitfetch-python-$VERSION.tar.gz::$SOURCE_URL|" .SRCINFO
-          sed -i "s/sha256sums = .*/sha256sums = $SHA256/" .SRCINFO
+
+          # makepkg cannot run as root, create a builder user
+          useradd -m builder
+          chown -R builder: .
+          su builder -c "makepkg --printsrcinfo > .SRCINFO"
 
       - name: Setup SSH for AUR
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
           chmod 600 ~/.ssh/aur_key
-          cat >> ~/.ssh/config << EOF
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur_key
-            User aur
-          EOF
+          printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur_key\n  User aur\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
       - name: Clone and update AUR
         run: |
           git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
-          
+
           cp .github/aur/PKGBUILD aur-repo/
           cp .github/aur/.SRCINFO aur-repo/
-          
+
           cd aur-repo
           git config user.name "Matar"
           git config user.email "khaledmatar19733@gmail.com"
