@@ -58,9 +58,10 @@ jobs:
           cd aur-repo
           docker run --rm -v $(pwd):/pkg archlinux:latest /bin/bash -c "
             pacman -Syu --noconfirm
-            pacman -S --noconfirm namcap
-            cd /pkg
-            makepkg --printsrcinfo > .SRCINFO
+            pacman -S --noconfirm namcap sudo
+            useradd -m builder
+            chown -R builder:builder /pkg
+            sudo -u builder bash -c 'cd /pkg && makepkg --printsrcinfo > .SRCINFO'
           "
 
       - name: Commit and push to AUR
