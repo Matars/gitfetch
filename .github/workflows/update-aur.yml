@@ -3,72 +3,66 @@ name: Update AUR Package
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   update-aur:
     runs-on: ubuntu-latest
+    container: archlinux:latest
 
     steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm git openssh curl
+
       - name: Checkout main repo
         uses: actions/checkout@v4
-        with:
-          repository: Matars/gitfetch
-          path: gitfetch
 
       - name: Get version from pyproject.toml
         id: get_version
         run: |
-          VERSION=$(grep '^version =' gitfetch/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(grep '^version =' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Install AUR tools
+      - name: Update PKGBUILD and .SRCINFO
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git
-
-      - name: Setup SSH for AUR
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
-          chmod 600 ~/.ssh/aur_key
-          echo "Host aur.archlinux.org" >> ~/.ssh/config
-          echo "  IdentityFile ~/.ssh/aur_key" >> ~/.ssh/config
-          echo "  User aur" >> ~/.ssh/config
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-
-      - name: Clone AUR package
-        run: |
-          git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
-
-      - name: Update PKGBUILD
-        run: |
-          cd aur-repo
           VERSION=${{ steps.get_version.outputs.version }}
+          cd .github/aur
           
           SOURCE_URL="https://github.com/Matars/gitfetch/archive/refs/tags/v${VERSION}.tar.gz"
           SHA256=$(curl -sL "$SOURCE_URL" | sha256sum | awk '{print $1}')
           
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s|^source=.*|source=(\"$SOURCE_URL\")|" PKGBUILD
+          sed -i "s|source=.*|source=(\"\$pkgname-\$pkgver.tar.gz::$SOURCE_URL\")|" PKGBUILD
           sed -i "s/^sha256sums=.*/sha256sums=('$SHA256')/" PKGBUILD
+          
+          sed -i "s/pkgver = .*/pkgver = $VERSION/" .SRCINFO
+          sed -i "s/pkgrel = .*/pkgrel = 1/" .SRCINFO
+          sed -i "s|source = .*|source = gitfetch-python-$VERSION.tar.gz::$SOURCE_URL|" .SRCINFO
+          sed -i "s/sha256sums = .*/sha256sums = $SHA256/" .SRCINFO
 
-      - name: Generate .SRCINFO
+      - name: Setup SSH for AUR
         run: |
-          cd aur-repo
-          docker run --rm -v $(pwd):/pkg archlinux:latest /bin/bash -c "
-            pacman -Syu --noconfirm
-            pacman -S --noconfirm namcap sudo
-            useradd -m builder
-            chown -R builder:builder /pkg
-            sudo -u builder bash -c 'cd /pkg && makepkg --printsrcinfo > .SRCINFO'
-          "
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          cat >> ~/.ssh/config << EOF
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur_key
+            User aur
+          EOF
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
-      - name: Commit and push to AUR
+      - name: Clone and update AUR
         run: |
+          git clone ssh://aur@aur.archlinux.org/gitfetch-python.git aur-repo
+          
+          cp .github/aur/PKGBUILD aur-repo/
+          cp .github/aur/.SRCINFO aur-repo/
+          
           cd aur-repo
           git config user.name "Matar"
           git config user.email "khaledmatar19733@gmail.com"
           git add PKGBUILD .SRCINFO
-          git commit -m "Update gitfetch-python to v${{ steps.get_version.outputs.version }}"
+          git commit -m "Update gitfetch-python to v${{ steps.get_version.outputs.version }}" || echo "No changes to commit"
           git push
