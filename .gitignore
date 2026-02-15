@@ -9,9 +9,13 @@ __pycache__/
 
 *.egg-info
 
+codeql/
+specs/
+
 
 # env
 venv/
 .venv
 env/
 .env/
+target/
