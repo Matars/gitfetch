@@ -4,6 +4,8 @@ Command-line interface for gitfetch
 
 import argparse
 import os
+from pathlib import Path
+import shutil
 import sys
 import subprocess
 from typing import Optional
@@ -48,15 +50,15 @@ def _background_refresh_cache_subprocess(username: str) -> None:
 
 def _debug_enabled() -> bool:
     """Return True when debug mode is enabled via env var."""
-    value = os.environ.get('DEBUG')
+    value = os.environ.get("DEBUG")
     if value is None:
         # Backward compatibility with older env var name.
-        value = os.environ.get('GITFETCH_DEBUG')
+        value = os.environ.get("GITFETCH_DEBUG")
 
     if value is None:
         return False
 
-    return value.strip().lower() not in {'', '0', 'false', 'no', 'off'}
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,151 +66,127 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="""A neofetch-style CLI tool for git.
 Supports GitHub, GitLab, Gitea, and Sourcehut.""",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
-        "username",
-        nargs="?",
-        help="Username to fetch stats for"
-    )
+    parser.add_argument("username", nargs="?", help="Username to fetch stats for")
 
-    general_group = parser.add_argument_group('\033[92mGeneral Options\033[0m')
+    general_group = parser.add_argument_group("\033[92mGeneral Options\033[0m")
     general_group.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass cache and fetch fresh data"
+        "--no-cache", action="store_true", help="Bypass cache and fetch fresh data"
     )
 
     general_group.add_argument(
-        "--clear-cache",
-        action="store_true",
-        help="Clear the cache and exit"
+        "--clear-cache", action="store_true", help="Clear the cache and exit"
     )
 
     general_group.add_argument(
-        "--version",
-        action="store_true",
-        help="Show version and check for updates"
+        "--version", action="store_true", help="Show version and check for updates"
     )
 
     general_group.add_argument(
         "--change-provider",
         action="store_true",
-        help="Change the configured git provider"
+        help="Change the configured git provider",
     )
 
     # Hidden argument for background cache refresh
     general_group.add_argument(
         "--background-refresh",
         type=str,
-        help=argparse.SUPPRESS  # Hide from help
+        help=argparse.SUPPRESS,  # Hide from help
     )
 
     general_group.add_argument(
         "--local",
         action="store_true",
-        help="Fetch data specific to current local repo (requires .git folder)"
+        help="Fetch data specific to current local repo (requires .git folder)",
     )
 
-    visual_group = parser.add_argument_group('\033[94mVisual Options\033[0m')
-    visual_group.add_argument(
-        "--spaced",
+    general_group.add_argument(
+        "--tui",
         action="store_true",
-        help="Enable spaced layout"
+        help="Launch Rust-powered terminal UI (experimental)",
+    )
+
+    visual_group = parser.add_argument_group("\033[94mVisual Options\033[0m")
+    visual_group.add_argument(
+        "--spaced", action="store_true", help="Enable spaced layout"
     )
 
     visual_group.add_argument(
-        "--not-spaced",
-        action="store_true",
-        help="Disable spaced layout"
+        "--not-spaced", action="store_true", help="Disable spaced layout"
     )
 
     visual_group.add_argument(
         "--custom-box",
         type=str,
-        help="Custom character for contribution blocks (e.g., '■', '█')"
+        help="Custom character for contribution blocks (e.g., '■', '█')",
     )
 
     visual_group.add_argument(
-        "--graph-only",
-        action="store_true",
-        help="Show only the contribution graph"
+        "--graph-only", action="store_true", help="Show only the contribution graph"
     )
 
     visual_group.add_argument(
-        "--width",
-        type=int,
-        help="Set custom width for contribution graph"
+        "--width", type=int, help="Set custom width for contribution graph"
     )
 
     visual_group.add_argument(
-        "--height",
-        type=int,
-        help="Set custom height for contribution graph"
+        "--height", type=int, help="Set custom height for contribution graph"
     )
 
     visual_group.add_argument(
         "--text",
         type=str,
-        help="Display text as contribution graph pattern (simulation only)"
+        help="Display text as contribution graph pattern (simulation only)",
     )
 
     visual_group.add_argument(
         "--shape",
-        nargs='+',
-        help=("Display one or more predefined shapes as contribution graph "
-              "(simulation only). Provide multiple shapes after the option: "
-              "--shape kitty kitty")
+        nargs="+",
+        help=(
+            "Display one or more predefined shapes as contribution graph "
+            "(simulation only). Provide multiple shapes after the option: "
+            "--shape kitty kitty"
+        ),
     )
 
     visual_group.add_argument(
         "--graph-timeline",
         action="store_true",
-        help="Show git timeline graph instead of contribution graph"
+        help="Show git timeline graph instead of contribution graph",
     )
 
-    visibility_group = parser.add_argument_group('\033[95mVisibility\033[0m')
+    visibility_group = parser.add_argument_group("\033[95mVisibility\033[0m")
     visibility_group.add_argument(
         "--no-date",
         action="store_true",
-        help="Hide month/date labels on contribution graph"
+        help="Hide month/date labels on contribution graph",
     )
 
     visibility_group.add_argument(
-        "--no-achievements",
-        action="store_true",
-        help="Hide achievements section"
+        "--no-achievements", action="store_true", help="Hide achievements section"
     )
 
     visibility_group.add_argument(
-        "--no-languages",
-        action="store_true",
-        help="Hide languages section"
+        "--no-languages", action="store_true", help="Hide languages section"
     )
 
     visibility_group.add_argument(
-        "--no-issues",
-        action="store_true",
-        help="Hide issues section"
+        "--no-issues", action="store_true", help="Hide issues section"
     )
 
     visibility_group.add_argument(
-        "--no-pr",
-        action="store_true",
-        help="Hide pull requests section"
+        "--no-pr", action="store_true", help="Hide pull requests section"
     )
 
     visibility_group.add_argument(
-        "--no-account",
-        action="store_true",
-        help="Hide account information section"
+        "--no-account", action="store_true", help="Hide account information section"
     )
 
     visibility_group.add_argument(
-        "--no-grid",
-        action="store_true",
-        help="Hide contribution grid/graph"
+        "--no-grid", action="store_true", help="Hide contribution grid/graph"
     )
 
     return parser.parse_args()
@@ -222,7 +200,8 @@ def main() -> int:
         # Check for --local flag
         if args.local:
             import os
-            if not os.path.exists('.git'):
+
+            if not os.path.exists(".git"):
                 print("Error: --local requires .git folder", file=sys.stderr)
                 return 1
 
@@ -230,6 +209,9 @@ def main() -> int:
         if args.background_refresh:
             _background_refresh_cache_subprocess(args.background_refresh)
             return 0
+
+        if args.tui:
+            return _run_tui()
 
         if args.change_provider:
             config_manager = ConfigManager()
@@ -244,19 +226,24 @@ def main() -> int:
             print(f"gitfetch version: {__version__}")
             # Check for updates from GitHub
             import requests
+
             try:
                 resp = requests.get(
-                    "https://api.github.com/repos/Matars/gitfetch/releases/latest", timeout=3)
+                    "https://api.github.com/repos/Matars/gitfetch/releases/latest",
+                    timeout=3,
+                )
                 if resp.status_code == 200:
                     latest = resp.json()["tag_name"].lstrip("v")
                     if latest != __version__:
-                        print(f"\033[93mUpdate available: {latest}\n"
-                              + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
-                              + "Or update using your package manager:\n"
-                              + "\t\tbrew update && brew upgrade gitfetch\n"
-                              + "\t\tpip install --upgrade gitfetch\n"
-                              + "\t\tpacman -Syu gitfetch-python\n"
-                              + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m")
+                        print(
+                            f"\033[93mUpdate available: {latest}\n"
+                            + "Get it at: https://github.com/Matars/gitfetch/releases/latest\n"
+                            + "Or update using your package manager:\n"
+                            + "\t\tbrew update && brew upgrade gitfetch\n"
+                            + "\t\tpip install --upgrade gitfetch\n"
+                            + "\t\tpacman -Syu gitfetch-python\n"
+                            + "\t\tsudo apt update && sudo apt install --only-upgrade gitfetch\033[0m"
+                        )
                     else:
                         print("You are using the latest version.")
                 else:
@@ -327,8 +314,9 @@ def main() -> int:
         # and reuse cached metadata (issues, PRs, languages, achievements)
         if args.text or args.shape:
             if args.text and args.shape:
-                print("Error: --text and --shape cannot be used together",
-                      file=sys.stderr)
+                print(
+                    "Error: --text and --shape cannot be used together", file=sys.stderr
+                )
                 return 1
 
             try:
@@ -339,8 +327,7 @@ def main() -> int:
                 else:  # args.shape
                     # Use the predefined shape pattern (shape may be a list)
                     shape_grid = formatter._shape_to_grid(args.shape)
-                    weeks = formatter._generate_weeks_from_text_grid(
-                        shape_grid)
+                    weeks = formatter._generate_weeks_from_text_grid(shape_grid)
             except Exception as e:
                 print(f"Error generating graph: {e}", file=sys.stderr)
                 return 1
@@ -352,35 +339,36 @@ def main() -> int:
             if lookup_username:
                 # Prefer fresh cache, but fall back to stale cache so
                 # simulated graphs can still show metadata like streaks
-                cached_user = (
-                    cache_manager.get_cached_user_data(lookup_username)
-                    or cache_manager.get_stale_cached_user_data(lookup_username)
-                )
-                cached_stats = (
-                    cache_manager.get_cached_stats(lookup_username)
-                    or cache_manager.get_stale_cached_stats(lookup_username)
-                )
+                cached_user = cache_manager.get_cached_user_data(
+                    lookup_username
+                ) or cache_manager.get_stale_cached_user_data(lookup_username)
+                cached_stats = cache_manager.get_cached_stats(
+                    lookup_username
+                ) or cache_manager.get_stale_cached_stats(lookup_username)
 
             if cached_stats:
                 # Replace only the contribution graph with our simulated weeks
-                cached_stats['contribution_graph'] = weeks
+                cached_stats["contribution_graph"] = weeks
                 stats = cached_stats
             else:
-                stats = {'contribution_graph': weeks}
+                stats = {"contribution_graph": weeks}
 
             if cached_user:
                 user_data = cached_user
-                display_name = cached_user.get('name') or lookup_username
+                display_name = cached_user.get("name") or lookup_username
             else:
                 # Minimal fallback user_data for display purposes
-                display_name = (
-                    args.username
-                    or (args.text if args.text else ' '.join(args.shape) if args.shape else None)
+                display_name = args.username or (
+                    args.text
+                    if args.text
+                    else " ".join(args.shape)
+                    if args.shape
+                    else None
                 )
                 user_data = {
-                    'name': display_name,
-                    'bio': '',
-                    'website': '',
+                    "name": display_name,
+                    "bio": "",
+                    "website": "",
                 }
 
             if display_name == None:
@@ -402,11 +390,7 @@ def main() -> int:
             return 0
 
         # Get username
-        username = (
-            args.username
-            or config_manager.get_default_username()
-            or None
-        )
+        username = args.username or config_manager.get_default_username() or None
 
         if not username:
             # Fall back to authenticated user
@@ -432,25 +416,29 @@ def main() -> int:
 
                 # If fresh cache is available, just display
                 if user_data is not None and stats is not None:
-                    formatter.display(username, user_data,
-                                      stats, spaced=spaced)
+                    formatter.display(username, user_data, stats, spaced=spaced)
                     return 0
 
                 # Try stale cache for immediate display
-                stale_user_data = cache_manager.get_stale_cached_user_data(
-                    username)
+                stale_user_data = cache_manager.get_stale_cached_user_data(username)
                 stale_stats = cache_manager.get_stale_cached_stats(username)
 
                 if stale_user_data is not None and stale_stats is not None:
-                    formatter.display(username, stale_user_data,
-                                      stale_stats, spaced=spaced)
+                    formatter.display(
+                        username, stale_user_data, stale_stats, spaced=spaced
+                    )
 
                     # Spawn a completely independent background process
                     # Spawn background refresh process
                     try:
                         subprocess.Popen(
-                            [sys.executable, "-m", "gitfetch.cli",
-                                "--background-refresh", username],
+                            [
+                                sys.executable,
+                                "-m",
+                                "gitfetch.cli",
+                                "--background-refresh",
+                                username,
+                            ],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             stdin=subprocess.DEVNULL,
@@ -479,6 +467,7 @@ def main() -> int:
             # environments where the short error message is not enough).
             try:
                 import traceback
+
                 if _debug_enabled():
                     traceback.print_exc()
                 else:
@@ -491,6 +480,42 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\nInterrupted by user.", file=sys.stderr)
         return 130
+
+
+def _run_tui() -> int:
+    """Launch the experimental Rust TUI binary."""
+    configured_bin = os.environ.get("GITFETCH_TUI_BIN")
+    if configured_bin:
+        command = [configured_bin]
+    else:
+        installed_bin = shutil.which("gitfetch-tui")
+        if installed_bin:
+            command = [installed_bin]
+        else:
+            repo_root = Path(__file__).resolve().parents[2]
+            cargo_manifest = repo_root / "rust" / "gitfetch-tui" / "Cargo.toml"
+            if cargo_manifest.exists() and shutil.which("cargo"):
+                command = [
+                    "cargo",
+                    "run",
+                    "--quiet",
+                    "--manifest-path",
+                    str(cargo_manifest),
+                    "--",
+                ]
+            else:
+                print(
+                    "TUI scaffold not found. Install 'gitfetch-tui' or run from repo with cargo.",
+                    file=sys.stderr,
+                )
+                return 1
+
+    try:
+        completed = subprocess.run(command)
+        return completed.returncode
+    except FileNotFoundError:
+        print("Failed to launch TUI binary.", file=sys.stderr)
+        return 1
 
 
 def _prompt_username() -> Optional[str]:
@@ -506,10 +531,10 @@ def _prompt_username() -> Optional[str]:
 def _prompt_provider() -> Optional[str]:
     """Prompt user for git provider with interactive selection."""
     providers = [
-        ('github', 'GitHub'),
-        ('gitlab', 'GitLab'),
-        ('gitea', 'Gitea/Forgejo/Codeberg'),
-        ('sourcehut', 'Sourcehut')
+        ("github", "GitHub"),
+        ("gitlab", "GitLab"),
+        ("gitea", "Gitea/Forgejo/Codeberg"),
+        ("sourcehut", "Sourcehut"),
     ]
 
     selected = 0
@@ -532,9 +557,9 @@ def _prompt_provider() -> Optional[str]:
             # Read key
             key = readchar.readkey()
 
-            if key == readchar.key.UP or key == 'k':
+            if key == readchar.key.UP or key == "k":
                 selected = (selected - 1) % len(providers)
-            elif key == readchar.key.DOWN or key == 'j':
+            elif key == readchar.key.DOWN or key == "j":
                 selected = (selected + 1) % len(providers)
             elif key == readchar.key.ENTER:
                 print()  # New line after selection
@@ -547,17 +572,21 @@ def _prompt_provider() -> Optional[str]:
 
 def _create_fetcher(provider: str, base_url: str, token: Optional[str] = None):
     """Create the appropriate fetcher for the provider."""
-    if provider == 'github':
+    if provider == "github":
         from .fetcher import GitHubFetcher
+
         return GitHubFetcher(token)
-    elif provider == 'gitlab':
+    elif provider == "gitlab":
         from .fetcher import GitLabFetcher
+
         return GitLabFetcher(base_url, token)
-    elif provider == 'gitea':
+    elif provider == "gitea":
         from .fetcher import GiteaFetcher
+
         return GiteaFetcher(base_url, token)
-    elif provider == 'sourcehut':
+    elif provider == "sourcehut":
         from .fetcher import SourcehutFetcher
+
         return SourcehutFetcher(base_url, token)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
@@ -581,31 +610,31 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             return False
 
         # Determine URL for provider
-        if provider == 'github':
-            url = PROVIDER_DEFAULT_URLS.get('github', 'https://api.github.com')
-        elif provider == 'gitlab':
-            url = PROVIDER_DEFAULT_URLS.get('gitlab', 'https://gitlab.com')
-        elif provider == 'gitea':
+        if provider == "github":
+            url = PROVIDER_DEFAULT_URLS.get("github", "https://api.github.com")
+        elif provider == "gitlab":
+            url = PROVIDER_DEFAULT_URLS.get("gitlab", "https://gitlab.com")
+        elif provider == "gitea":
             url = input("Enter Gitea/Forgejo/Codeberg URL: ").strip()
             if not url:
                 print("Provider URL required", file=sys.stderr)
                 return False
-        elif provider == 'sourcehut':
-            url = PROVIDER_DEFAULT_URLS.get('sourcehut', 'https://git.sr.ht')
+        elif provider == "sourcehut":
+            url = PROVIDER_DEFAULT_URLS.get("sourcehut", "https://git.sr.ht")
         else:
             print(f"Unsupported provider: {provider}", file=sys.stderr)
             return False
 
         # Ask for token (optional - only for extra rate limits)
-        token = ''
-        env_var = PROVIDER_ENV_VARS.get(provider, '')
-        
+        token = ""
+        env_var = PROVIDER_ENV_VARS.get(provider, "")
+
         # Make it clear CLI is required, token is optional for rate limits
-        if provider in ['github', 'gitlab']:
-            cli_name = 'gh' if provider == 'github' else 'glab'
+        if provider in ["github", "gitlab"]:
+            cli_name = "gh" if provider == "github" else "glab"
             print(f"\nNote: {cli_name} CLI is required for authentication.")
             print(f"Token is optional but increases rate limits.\n")
-        
+
         token_msg = f"Enter your {provider} personal access token"
         token_msg += f"\n(optional - for higher rate limits, press Enter to skip"
         if env_var:
@@ -619,9 +648,9 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
         # Create provider config
         provider_config = ProviderConfig(
             name=provider,
-            username='',  # Will be set after fetcher auth
+            username="",  # Will be set after fetcher auth
             url=url,
-            token=token
+            token=token,
         )
 
         # Create fetcher to get authenticated user
@@ -636,9 +665,9 @@ def _initialize_gitfetch(config_manager: ConfigManager) -> bool:
             provider_config.username = username
         except Exception as e:
             print(f"Could not get authenticated user: {e}")
-            if provider == 'github':
+            if provider == "github":
                 print("Please install gh CLI and run: gh auth login")
-            elif provider == 'gitlab':
+            elif provider == "gitlab":
                 print("Please install glab CLI and run: glab auth login")
             else:
                 print("Please ensure you have a valid token configured")

@@ -1,0 +1,9 @@
+[package]
+name = "gitfetch-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Experimental TUI scaffold for gitfetch"
+
+[dependencies]
+crossterm = "0.29"
+ratatui = "0.29"
