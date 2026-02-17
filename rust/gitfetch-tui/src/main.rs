@@ -1123,93 +1123,12 @@ fn refresh_worktrees(app: &mut App) {
             .then_with(|| a.path.cmp(&b.path))
     });
 
-    reconcile_branch_upstreams(
-        root.as_str(),
-        &entries,
-        current_session_branch(app).as_str(),
-    );
-
     app.worktrees = entries;
     if app.worktrees.is_empty() {
         app.selected_worktree = 0;
     } else if app.selected_worktree >= app.worktrees.len() {
         app.selected_worktree = app.worktrees.len() - 1;
     }
-}
-
-fn reconcile_branch_upstreams(root: &str, entries: &[WorktreeEntry], root_branch: &str) {
-    let parents = worktree_parent_map(entries, root_branch);
-    for (idx, wt) in entries.iter().enumerate() {
-        if wt.detached || wt.branch.is_empty() {
-            continue;
-        }
-        if wt.branch == root_branch {
-            continue;
-        }
-
-        let parent_branch = parents
-            .get(idx)
-            .and_then(|parent_idx| {
-                parent_idx.and_then(|pi| entries.get(pi).map(|e| e.branch.as_str()))
-            })
-            .unwrap_or(root_branch);
-
-        let _ = ensure_branch_upstream(root, wt.branch.as_str(), parent_branch);
-    }
-}
-
-fn ensure_branch_upstream(
-    root: &str,
-    branch: &str,
-    parent_branch: &str,
-) -> Result<(), Box<dyn Error>> {
-    if branch == parent_branch {
-        return Ok(());
-    }
-
-    let has_parent = Command::new("git")
-        .args([
-            "-C",
-            root,
-            "show-ref",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{}", parent_branch),
-        ])
-        .status()?;
-    if !has_parent.success() {
-        return Ok(());
-    }
-
-    let upstream = Command::new("git")
-        .args([
-            "-C",
-            root,
-            "for-each-ref",
-            "--format=%(upstream:short)",
-            &format!("refs/heads/{}", branch),
-        ])
-        .output()?;
-
-    let current = sanitize_for_tui(String::from_utf8_lossy(&upstream.stdout).as_ref())
-        .trim()
-        .to_string();
-    if !current.is_empty() {
-        return Ok(());
-    }
-
-    let _ = Command::new("git")
-        .args([
-            "-C",
-            root,
-            "branch",
-            "--set-upstream-to",
-            parent_branch,
-            branch,
-        ])
-        .output()?;
-
-    Ok(())
 }
 
 fn hydrate_worktree_runtime_state(
@@ -2458,60 +2377,27 @@ fn commit_and_push_worktree(path: &str, message: &str) -> Result<String, Box<dyn
 }
 
 fn push_with_upstream_at(path: &str) -> Result<String, Box<dyn Error>> {
-    let first = Command::new("git").args(["-C", path, "push"]).output()?;
-    let first_stdout = sanitize_for_tui(String::from_utf8_lossy(&first.stdout).as_ref())
-        .trim()
-        .to_string();
-    let first_stderr = sanitize_for_tui(String::from_utf8_lossy(&first.stderr).as_ref())
-        .trim()
-        .to_string();
-
-    if first.status.success() {
-        return Ok(if first_stdout.is_empty() {
-            "✓ git push".to_string()
-        } else {
-            first_stdout
-        });
-    }
-
-    let error_text = if !first_stderr.is_empty() {
-        first_stderr.clone()
-    } else {
-        first_stdout.clone()
-    };
-    let needs_upstream = error_text.contains("has no upstream branch")
-        || error_text.contains("--set-upstream")
-        || error_text.contains("set upstream");
-
-    if !needs_upstream {
-        return Ok(if error_text.is_empty() {
-            "git push failed".to_string()
-        } else {
-            error_text
-        });
-    }
-
     let remote = preferred_remote_at(path)?;
-    let second = Command::new("git")
+    let push = Command::new("git")
         .args(["-C", path, "push", "-u", remote.as_str(), "HEAD"])
         .output()?;
-    let second_stdout = sanitize_for_tui(String::from_utf8_lossy(&second.stdout).as_ref())
+    let push_stdout = sanitize_for_tui(String::from_utf8_lossy(&push.stdout).as_ref())
         .trim()
         .to_string();
-    let second_stderr = sanitize_for_tui(String::from_utf8_lossy(&second.stderr).as_ref())
+    let push_stderr = sanitize_for_tui(String::from_utf8_lossy(&push.stderr).as_ref())
         .trim()
         .to_string();
 
-    if second.status.success() {
-        Ok(if second_stdout.is_empty() {
+    if push.status.success() {
+        Ok(if push_stdout.is_empty() {
             format!("✓ git push -u {} HEAD", remote)
         } else {
-            format!("Set upstream to {} and pushed\n{}", remote, second_stdout)
+            format!("Set upstream to {} and pushed\n{}", remote, push_stdout)
         })
-    } else if !second_stderr.is_empty() {
-        Ok(second_stderr)
-    } else if !second_stdout.is_empty() {
-        Ok(second_stdout)
+    } else if !push_stderr.is_empty() {
+        Ok(push_stderr)
+    } else if !push_stdout.is_empty() {
+        Ok(push_stdout)
     } else {
         Ok(format!("git push -u {} HEAD failed", remote))
     }
@@ -3529,11 +3415,12 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]));
         lines.push(Line::from(""));
         let status_max = area.width.saturating_sub(4) as usize;
+        let status_text = summarize_status_line(app.status_line.as_str());
         lines.push(Line::from(vec![Span::styled(
             "status:",
             Style::default().fg(Color::Gray),
         )]));
-        for wrapped in wrap_text_lines(app.status_line.as_str(), status_max.max(12), 4) {
+        for wrapped in wrap_text_lines(status_text.as_str(), status_max.max(12), 2) {
             lines.push(Line::from(vec![Span::styled(
                 wrapped,
                 Style::default().fg(Color::White),
@@ -4375,6 +4262,26 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
 
 fn single_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
+}
+
+fn summarize_status_line(text: &str) -> String {
+    let cleaned = sanitize_for_tui(text);
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.contains("fatal:") || trimmed.contains("error:") {
+            return trimmed.to_string();
+        }
+    }
+
+    cleaned
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn wrap_text_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<String> {
