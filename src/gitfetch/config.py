@@ -10,6 +10,7 @@ import webcolors
 
 from .providers import ProviderConfig, PROVIDER_ENV_VARS, PROVIDER_DEFAULT_URLS
 
+
 class ConfigManager:
     """Manages gitfetch configuration."""
 
@@ -29,62 +30,67 @@ class ConfigManager:
     def _load_config(self) -> None:
         """Load configuration from file."""
         default_colors = {
-            'reset': '#000000',
-            'bold': '#FFFFFF',
-            'dim': '#888888',
-            'red': '#FF5555',
-            'green': '#50FA7B',
-            'yellow': '#F1FA8C',
-            'blue': '#BD93F9',
-            'magenta': '#FF79C6',
-            'cyan': '#8BE9FD',
-            'white': '#F8F8F2',
-            'orange': '#FFB86C',
-            'accent': '#FFFFFF',
-            'header': '#76D7A1',
-            'muted': '#44475A',
+            "reset": "#000000",
+            "bold": "#FFFFFF",
+            "dim": "#888888",
+            "red": "#FF5555",
+            "green": "#50FA7B",
+            "yellow": "#F1FA8C",
+            "blue": "#BD93F9",
+            "magenta": "#FF79C6",
+            "cyan": "#8BE9FD",
+            "white": "#F8F8F2",
+            "orange": "#FFB86C",
+            "accent": "#FFFFFF",
+            "header": "#76D7A1",
+            "muted": "#44475A",
             # Contribution intensity levels (GitHub-like defaults)
-            '0': '#ebedf0',  # no contributions / very light gray
-            '1': '#9be9a8',  # light
-            '2': '#40c463',  # medium
-            '3': '#30a14e',  # darker
-            '4': '#216e39'   # darkest
+            "0": "#ebedf0",  # no contributions / very light gray
+            "1": "#9be9a8",  # light
+            "2": "#40c463",  # medium
+            "3": "#30a14e",  # darker
+            "4": "#216e39",  # darkest
         }
         if self.CONFIG_FILE.exists():
             self.config.read(self.CONFIG_FILE)
             # Migrate old cache_expiry_hours to cache_expiry_minutes
-            if self.config.has_option('DEFAULT', 'cache_expiry_hours'):
-                old_hours = self.config.get('DEFAULT', 'cache_expiry_hours')
+            if self.config.has_option("DEFAULT", "cache_expiry_hours"):
+                old_hours = self.config.get("DEFAULT", "cache_expiry_hours")
                 try:
                     new_minutes = int(old_hours) * 60  # hours to minutes
-                    self.config.set('DEFAULT', 'cache_expiry_minutes',
-                                    str(new_minutes))
-                    self.config.remove_option('DEFAULT', 'cache_expiry_hours')
+                    self.config.set("DEFAULT", "cache_expiry_minutes", str(new_minutes))
+                    self.config.remove_option("DEFAULT", "cache_expiry_hours")
                     self.save()  # Save migrated config
                 except ValueError:
                     pass  # Keep default if invalid
-            if "COLORS" in self.config._sections:
+            if self.config.has_section("COLORS"):
                 # Filter out non-color keys that might have been corrupted
-                colors_data = self.config._sections['COLORS']
                 valid_color_keys = set(default_colors.keys())
-                filtered_colors = {k: v for k, v in colors_data.items()
-                                   if k in valid_color_keys}
-                self.config._sections['COLORS'] = {
-                    **default_colors, **filtered_colors}
+                filtered_colors = {
+                    k: v
+                    for k, v in self.config.items("COLORS")
+                    if k in valid_color_keys
+                }
+                # Reset COLORS section with defaults merged with valid existing values
+                self.config.remove_section("COLORS")
+                self.config.add_section("COLORS")
+                merged = {**default_colors, **filtered_colors}
+                for key, value in merged.items():
+                    self.config.set("COLORS", key, value)
             else:
-                self.config.add_section('COLORS')
+                self.config.add_section("COLORS")
                 for key, value in default_colors.items():
-                    self.config.set('COLORS', key, value)
+                    self.config.set("COLORS", key, value)
         else:
             # Create default config
-            self.config['DEFAULT'] = {
-                'username': '',
-                'cache_expiry_minutes': '15',
-                'token': '',
+            self.config["DEFAULT"] = {
+                "username": "",
+                "cache_expiry_minutes": "15",
+                "token": "",
             }
-            self.config.add_section('COLORS')
+            self.config.add_section("COLORS")
             for key, value in default_colors.items():
-                self.config.set('COLORS', key, value)
+                self.config.set("COLORS", key, value)
         # No longer decode ANSI escapes; store as hex
 
     def get_default_username(self) -> Optional[str]:
@@ -94,7 +100,7 @@ class ConfigManager:
         Returns:
             Default username or None if not set
         """
-        username = self.config.get('DEFAULT', 'username', fallback='')
+        username = self.config.get("DEFAULT", "username", fallback="")
         return username if username else None
 
     def get_colors(self) -> dict:
@@ -105,7 +111,9 @@ class ConfigManager:
             dict: color name to hex code
         """
         parsed = {}
-        for k,v in self.config._sections["COLORS"].items():
+        if not self.config.has_section("COLORS"):
+            return parsed
+        for k, v in self.config.items("COLORS"):
             if not v.startswith("#") and v in webcolors.names():
                 parsed[k] = webcolors.name_to_hex(v)
             else:
@@ -121,21 +129,21 @@ class ConfigManager:
         """
         # Map hex codes to ANSI codes (basic mapping for demonstration)
         hex_to_ansi = {
-            '#000000': '\033[0m',
-            '#FFFFFF': '\033[1m',
-            '#888888': '\033[2m',
-            '#FF5555': '\033[91m',
-            '#50FA7B': '\033[92m',
-            '#F1FA8C': '\033[93m',
-            '#BD93F9': '\033[94m',
-            '#FF79C6': '\033[95m',
-            '#8BE9FD': '\033[96m',
-            '#F8F8F2': '\033[97m',
-            '#FFB86C': '\033[38;2;255;184;108m',
-            '#76D7A1': '\033[38;2;118;215;161m',
-            '#44475A': '\033[38;2;68;71;90m',
-            '#282A36': '\033[48;5;238m',
-            '#6272A4': '\033[38;2;98;114;164m',
+            "#000000": "\033[0m",
+            "#FFFFFF": "\033[1m",
+            "#888888": "\033[2m",
+            "#FF5555": "\033[91m",
+            "#50FA7B": "\033[92m",
+            "#F1FA8C": "\033[93m",
+            "#BD93F9": "\033[94m",
+            "#FF79C6": "\033[95m",
+            "#8BE9FD": "\033[96m",
+            "#F8F8F2": "\033[97m",
+            "#FFB86C": "\033[38;2;255;184;108m",
+            "#76D7A1": "\033[38;2;118;215;161m",
+            "#44475A": "\033[38;2;68;71;90m",
+            "#282A36": "\033[48;5;238m",
+            "#6272A4": "\033[38;2;98;114;164m",
         }
         colors = self.get_colors()
         ansi_colors = {}
@@ -150,9 +158,9 @@ class ConfigManager:
         Args:
             username: Username to set as default
         """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['username'] = username
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["username"] = username
 
     def get_cache_expiry_minutes(self) -> int:
         """
@@ -161,8 +169,7 @@ class ConfigManager:
         Returns:
             Number of minutes before cache expires (minimum 1)
         """
-        minutes_str = self.config.get(
-            'DEFAULT', 'cache_expiry_minutes', fallback='15')
+        minutes_str = self.config.get("DEFAULT", "cache_expiry_minutes", fallback="15")
         try:
             minutes = int(minutes_str)
             # Ensure cache expiry is at least 1 minute
@@ -180,9 +187,9 @@ class ConfigManager:
         # Ensure cache expiry is at least 1 minute
         minutes = max(1, minutes)
 
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['cache_expiry_minutes'] = str(minutes)
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["cache_expiry_minutes"] = str(minutes)
 
     def is_initialized(self) -> bool:
         """
@@ -191,9 +198,11 @@ class ConfigManager:
         Returns:
             True if config exists and has default username and provider
         """
-        return (self.CONFIG_FILE.exists() and
-                bool(self.get_default_username()) and
-                bool(self.get_provider()))
+        return (
+            self.CONFIG_FILE.exists()
+            and bool(self.get_default_username())
+            and bool(self.get_provider())
+        )
 
     def get_provider(self) -> Optional[str]:
         """
@@ -202,7 +211,7 @@ class ConfigManager:
         Returns:
             Provider name (github, gitlab, gitea, etc.) or None if not set
         """
-        provider = self.config.get('DEFAULT', 'provider', fallback='')
+        provider = self.config.get("DEFAULT", "provider", fallback="")
         return provider if provider else None
 
     def set_provider(self, provider: str) -> None:
@@ -212,9 +221,9 @@ class ConfigManager:
         Args:
             provider: Git provider name (github, gitlab, gitea, etc.)
         """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['provider'] = provider
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["provider"] = provider
 
     def get_provider_url(self) -> Optional[str]:
         """
@@ -223,7 +232,7 @@ class ConfigManager:
         Returns:
             Base URL for the git provider or None if not set
         """
-        url = self.config.get('DEFAULT', 'provider_url', fallback='')
+        url = self.config.get("DEFAULT", "provider_url", fallback="")
         return url if url else None
 
     def set_provider_url(self, url: str) -> None:
@@ -233,9 +242,9 @@ class ConfigManager:
         Args:
             url: Base URL for the git provider
         """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['provider_url'] = url
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["provider_url"] = url
 
     def get_custom_box(self) -> Optional[str]:
         """
@@ -244,7 +253,7 @@ class ConfigManager:
         Returns:
             Custom box character or None if not set
         """
-        box = self.config.get('DEFAULT', 'custom_box', fallback='')
+        box = self.config.get("DEFAULT", "custom_box", fallback="")
         return box if box else None
 
     def set_custom_box(self, box: str) -> None:
@@ -254,9 +263,9 @@ class ConfigManager:
         Args:
             box: Custom box character to use
         """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['custom_box'] = box
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["custom_box"] = box
 
     def get_token(self) -> Optional[str]:
         """
@@ -265,7 +274,7 @@ class ConfigManager:
         Returns:
             Token or None if not set
         """
-        token = self.config.get('DEFAULT', 'token', fallback='')
+        token = self.config.get("DEFAULT", "token", fallback="")
         return token if token else None
 
     def set_token(self, token: str) -> None:
@@ -275,9 +284,9 @@ class ConfigManager:
         Args:
             token: Personal access token
         """
-        if 'DEFAULT' not in self.config:
-            self.config['DEFAULT'] = {}
-        self.config['DEFAULT']['token'] = token
+        if "DEFAULT" not in self.config:
+            self.config["DEFAULT"] = {}
+        self.config["DEFAULT"]["token"] = token
 
     def get_provider_config(self) -> Optional[ProviderConfig]:
         """
@@ -298,30 +307,27 @@ class ConfigManager:
 
         # Try provider section first, fall back to DEFAULT for backward compat
         if self.config.has_section(section):
-            username = self.config.get(section, 'username', fallback='')
-            url = self.config.get(section, 'url', fallback='')
-            token = self.config.get(section, 'token', fallback='')
+            username = self.config.get(section, "username", fallback="")
+            url = self.config.get(section, "url", fallback="")
+            token = self.config.get(section, "token", fallback="")
         else:
             # Backward compatibility: read from DEFAULT
-            username = self.get_default_username() or ''
-            url = self.get_provider_url() or ''
-            token = self.get_token() or ''
+            username = self.get_default_username() or ""
+            url = self.get_provider_url() or ""
+            token = self.get_token() or ""
 
         # Token resolution: config -> env var
         if not token:
-            env_var = PROVIDER_ENV_VARS.get(provider_name, '')
+            env_var = PROVIDER_ENV_VARS.get(provider_name, "")
             if env_var:
-                token = os.getenv(env_var, '') or ''
+                token = os.getenv(env_var, "") or ""
 
         # Use default URL if not specified
         if not url:
-            url = PROVIDER_DEFAULT_URLS.get(provider_name, '')
+            url = PROVIDER_DEFAULT_URLS.get(provider_name, "")
 
         return ProviderConfig(
-            name=provider_name,
-            username=username,
-            url=url,
-            token=token
+            name=provider_name, username=username, url=url, token=token
         )
 
     def set_provider_config(self, config: ProviderConfig) -> None:
@@ -335,9 +341,9 @@ class ConfigManager:
         if not self.config.has_section(section):
             self.config.add_section(section)
 
-        self.config.set(section, 'username', config.username)
-        self.config.set(section, 'url', config.url)
-        self.config.set(section, 'token', config.token)
+        self.config.set(section, "username", config.username)
+        self.config.set(section, "url", config.url)
+        self.config.set(section, "token", config.token)
 
         # Also set provider in DEFAULT
         self.set_provider(config.name)
@@ -345,77 +351,156 @@ class ConfigManager:
     def save(self) -> None:
         """Save configuration to file."""
         import os
+        import tempfile
+
         self._ensure_config_dir()
-        # Remove the file if it exists to ensure clean write
-        if self.CONFIG_FILE.exists():
-            os.remove(self.CONFIG_FILE)
-        with open(self.CONFIG_FILE, 'w') as f:
-            f.write("# gitfetch configuration file\n")
-            f.write("# See docs/providers.md for provider configuration\n")
-            f.write("# See docs/colors.md for color customization\n\n")
+        # Write to a temp file then atomically rename to avoid data loss
+        # if the process crashes mid-write.
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.CONFIG_DIR, suffix=".tmp", prefix="gitfetch_"
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write("# gitfetch configuration file\n")
+                f.write("# See docs/providers.md for provider configuration\n")
+                f.write("# See docs/colors.md for color customization\n\n")
 
-            f.write("[DEFAULT]\n")
-            username = self.config.get('DEFAULT', 'username', fallback='')
-            f.write(f"username = {username}\n")
-
-            cache_minutes = self.config.get('DEFAULT', 'cache_expiry_minutes',
-                                            fallback='15')
-            f.write(f"cache_expiry_minutes = {cache_minutes}\n")
-
-            provider = self.config.get('DEFAULT', 'provider', fallback='')
-            f.write(f"provider = {provider}\n")
-
-            provider_url = self.config.get('DEFAULT', 'provider_url',
-                                           fallback='')
-            f.write(f"provider_url = {provider_url}\n")
-
-            token = self.config.get('DEFAULT', 'token', fallback='')
-            if token:
-                f.write(f"token = {token}\n")
-
-            custom_box = self.config.get('DEFAULT', 'custom_box', fallback='')
-            if custom_box:
-                f.write(f"custom_box = {custom_box}\n")
-
-            show_date = self.config.get('DEFAULT', 'show_date',
-                                        fallback='true')
-            if show_date != 'true':  # Only write if it's not the default
-                f.write(f"show_date = {show_date}\n")
-
-            f.write("\n")
-
-            # Write all provider sections (empty if not configured)
-            # Use known default URLs for providers
-            known_providers = ['github', 'gitlab', 'gitea', 'sourcehut']
-            for provider_section in known_providers:
-                f.write(f"[{provider_section}]\n")
-                has_section = self.config.has_section(provider_section)
-                
-                # Username
-                username = self.config.get(provider_section, 'username',
-                                           fallback='') if has_section else ''
+                f.write("[DEFAULT]\n")
+                username = self.config.get("DEFAULT", "username", fallback="")
                 f.write(f"username = {username}\n")
-                
-                # URL - use default if not set
-                url = self.config.get(provider_section, 'url',
-                                      fallback='') if has_section else ''
-                if not url:
-                    url = PROVIDER_DEFAULT_URLS.get(provider_section, '')
-                f.write(f"url = {url}\n")
-                
-                # Token
-                token = self.config.get(provider_section, 'token',
-                                        fallback='') if has_section else ''
-                f.write(f"token = {token}\n")
+
+                cache_minutes = self.config.get(
+                    "DEFAULT", "cache_expiry_minutes", fallback="15"
+                )
+                f.write(f"cache_expiry_minutes = {cache_minutes}\n")
+
+                provider = self.config.get("DEFAULT", "provider", fallback="")
+                f.write(f"provider = {provider}\n")
+
+                provider_url = self.config.get("DEFAULT", "provider_url", fallback="")
+                f.write(f"provider_url = {provider_url}\n")
+
+                token = self.config.get("DEFAULT", "token", fallback="")
+                if token:
+                    f.write(f"token = {token}\n")
+
+                custom_box = self.config.get("DEFAULT", "custom_box", fallback="")
+                if custom_box:
+                    f.write(f"custom_box = {custom_box}\n")
+
+                show_date = self.config.get("DEFAULT", "show_date", fallback="true")
+                if show_date != "true":  # Only write if it's not the default
+                    f.write(f"show_date = {show_date}\n")
+
                 f.write("\n")
 
-            if 'COLORS' in self.config._sections:
-                f.write("[COLORS]\n")
-                # Find the longest key for alignment
-                colors_section = self.config._sections['COLORS']
-                if colors_section:
-                    keys = list(colors_section.keys())
-                    max_key_length = max(len(key) for key in keys)
-                    for key, value in colors_section.items():
-                        f.write(f"{key:<{max_key_length}} = {value}\n")
-                f.write("\n")
+                # Write all provider sections (empty if not configured)
+                known_providers = ["github", "gitlab", "gitea", "sourcehut"]
+                for provider_section in known_providers:
+                    f.write(f"[{provider_section}]\n")
+                    has_section = self.config.has_section(provider_section)
+
+                    # Username
+                    sect_username = (
+                        self.config.get(provider_section, "username", fallback="")
+                        if has_section
+                        else ""
+                    )
+                    f.write(f"username = {sect_username}\n")
+
+                    # URL - use default if not set
+                    url = (
+                        self.config.get(provider_section, "url", fallback="")
+                        if has_section
+                        else ""
+                    )
+                    if not url:
+                        url = PROVIDER_DEFAULT_URLS.get(provider_section, "")
+                    f.write(f"url = {url}\n")
+
+                    # Token
+                    sect_token = (
+                        self.config.get(provider_section, "token", fallback="")
+                        if has_section
+                        else ""
+                    )
+                    f.write(f"token = {sect_token}\n")
+                    f.write("\n")
+
+                if self.config.has_section("COLORS"):
+                    f.write("[COLORS]\n")
+                    color_items = list(self.config.items("COLORS"))
+                    if color_items:
+                        max_key_length = max(len(key) for key, _ in color_items)
+                        for key, value in color_items:
+                            f.write(f"{key:<{max_key_length}} = {value}\n")
+                    f.write("\n")
+
+            # Atomic rename (works on POSIX; on Windows this may fail if
+            # the target exists, but gitfetch targets macOS/Linux).
+            os.replace(tmp_path, self.CONFIG_FILE)
+        except Exception:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def validate_config(self) -> list[str]:
+        """
+        Validate configuration and return list of warnings/errors.
+
+        Returns:
+            List of validation warning messages (empty if valid)
+        """
+        warnings = []
+
+        # Validate cache expiry minutes (should be 1-1440, i.e., 1 minute to 1 day)
+        try:
+            cache_minutes = self.get_cache_expiry_minutes()
+            if cache_minutes < 1:
+                warnings.append("cache_expiry_minutes must be at least 1 minute")
+            elif cache_minutes > 1440:
+                warnings.append(
+                    "cache_expiry_minutes should not exceed 1440 (24 hours)"
+                )
+        except (ValueError, TypeError):
+            warnings.append("cache_expiry_minutes has invalid value")
+
+        # Validate color values
+        try:
+            colors = self.get_colors()
+            for color_name, color_value in colors.items():
+                # Check if it's a valid hex code
+                if color_value.startswith("#"):
+                    if len(color_value) not in (7, 4):  # #RGB or #RRGGBB
+                        warnings.append(
+                            f"Invalid hex color format: {color_name} = {color_value}"
+                        )
+                else:
+                    # Check if it's a valid named color
+                    if color_value not in webcolors.names():
+                        warnings.append(
+                            f"Unknown color name: {color_name} = {color_value}"
+                        )
+        except Exception:
+            warnings.append("Error validating color configuration")
+
+        # Validate provider setting
+        provider = self.get_provider()
+        valid_providers = ["github", "gitlab", "gitea", "sourcehut"]
+        if provider and provider not in valid_providers:
+            provider_list = ", ".join(valid_providers)
+            warnings.append(
+                f"Invalid provider: {provider}. Must be one of: {provider_list}"
+            )
+
+        # Validate provider URL if set
+        provider_url = self.get_provider_url()
+        if provider_url and not (
+            provider_url.startswith("http://") or provider_url.startswith("https://")
+        ):
+            warnings.append(f"provider_url must start with http:// or https://")
+
+        return warnings

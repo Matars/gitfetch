@@ -1,3 +1,10 @@
+# NOTICE
+
+This branch was given a to ralph with the goal of writing tests, finding bugs, refactorign large files and potentially adding new features.
+
+This is for experimenation purposes only and this branch might or might not be merged into the main branch.
+
+
 # gitfetch
 
 [![CI](https://github.com/Matars/gitfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/Matars/gitfetch/actions/workflows/ci.yml)

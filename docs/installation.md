@@ -33,7 +33,7 @@ Or manual build:
 ```bash
 git clone https://aur.archlinux.org/gitfetch-python.git
 cd gitfetch-python
-makepkg -si
+make dev
 ```
 
 ## NixOS (Flake only)

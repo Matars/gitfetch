@@ -4,6 +4,12 @@ gitfetch - A neofetch-style CLI tool for git provider statistics
 
 import re
 from pathlib import Path
+from .calculations import (
+    calculate_current_streak,
+    calculate_max_streak,
+    calculate_total_contributions,
+    calculate_streaks,
+)
 
 
 def _get_version() -> str:
@@ -11,8 +17,9 @@ def _get_version() -> str:
     try:
         # Try to get version from package metadata
         from importlib import metadata
+
         return metadata.version("gitfetch")
-    except (ImportError):
+    except ImportError:
         pass
 
     # Fallback: try to read from pyproject.toml (works in development)
