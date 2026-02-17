@@ -29,6 +29,7 @@ def _background_refresh_cache_subprocess(username: str) -> None:
         config_manager = ConfigManager()
         cache_expiry = config_manager.get_cache_expiry_minutes()
         cache_manager = CacheManager(cache_expiry_minutes=cache_expiry)
+        print("tmp")
 
         provider_config = config_manager.get_provider_config()
         if not provider_config:

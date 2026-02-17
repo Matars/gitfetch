@@ -57,6 +57,36 @@ make dev
 - Smart SQLite-based caching system
 - Cross-platform support (macOS and Linux)
 - Extensive customization options
+- Experimental Rust TUI scaffold via `gitfetch --tui`
+
+## Experimental TUI (Rust)
+
+`gitfetch --tui` launches an experimental Rust `ratatui` interface for daily git flow.
+
+Current capabilities:
+
+- Live refresh (~700ms) of changed files and branch state
+- Stage/unstage a selected file
+- Create commit from inside the TUI
+- Push from inside the TUI
+
+For local testing from this repository:
+
+```bash
+cargo run --manifest-path rust/gitfetch-tui/Cargo.toml
+gitfetch --tui
+```
+
+You can also point to a custom TUI binary with `GITFETCH_TUI_BIN`.
+
+Controls:
+
+- `j` / `k` or arrow keys: move selection
+- `space` or `enter`: stage/unstage selected file
+- `c`: open commit input modal
+- `p`: push
+- `r`: refresh now
+- `q`: quit
 
 ## Supported Platforms
 

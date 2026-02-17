@@ -1,5 +1,7 @@
 use std::error::Error;
 use std::io;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 use std::{
@@ -31,6 +33,14 @@ struct FileEntry {
 enum Mode {
     Normal,
     CommitInput,
+    WorktreeCreateInput,
+    WorktreeBranchConflictConfirm,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ViewMode {
+    Changes,
+    Worktrees,
 }
 
 #[derive(Clone, Debug)]
@@ -46,7 +56,46 @@ struct App {
     overview_scroll: u16,
     status_line: String,
     mode: Mode,
+    view_mode: ViewMode,
     commit_input: String,
+    worktrees: Vec<WorktreeEntry>,
+    selected_worktree: usize,
+    worktree_focus: WorktreePane,
+    show_panel_help: bool,
+    new_worktree_branch: String,
+    new_worktree_base: WorktreeCreateBase,
+    pending_create_branch: String,
+    confirm_delete_branch_yes: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorktreePane {
+    Canvas,
+    Details,
+    Actions,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorktreeCreateBase {
+    Main,
+    Selected,
+    SelectedWithChanges,
+}
+
+#[derive(Clone, Debug, Default)]
+struct WorktreeEntry {
+    path: String,
+    head: String,
+    branch: String,
+    bare: bool,
+    detached: bool,
+    locked: bool,
+    prunable: bool,
+    is_current: bool,
+    dirty: bool,
+    ahead: usize,
+    behind: usize,
+    parent_hint: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -127,7 +176,16 @@ impl App {
             overview_scroll: 0,
             status_line: "Ready".to_string(),
             mode: Mode::Normal,
+            view_mode: ViewMode::Changes,
             commit_input: String::new(),
+            worktrees: Vec::new(),
+            selected_worktree: 0,
+            worktree_focus: WorktreePane::Canvas,
+            show_panel_help: false,
+            new_worktree_branch: String::new(),
+            new_worktree_base: WorktreeCreateBase::Selected,
+            pending_create_branch: String::new(),
+            confirm_delete_branch_yes: false,
         }
     }
 
@@ -160,6 +218,52 @@ impl App {
     fn focus_right(&mut self) {
         self.active_pane = ActivePane::Overview;
     }
+
+    fn selected_worktree(&self) -> Option<&WorktreeEntry> {
+        self.worktrees.get(self.selected_worktree)
+    }
+
+    fn select_worktree_next(&mut self) {
+        if self.worktrees.is_empty() {
+            self.selected_worktree = 0;
+        } else {
+            self.selected_worktree = (self.selected_worktree + 1) % self.worktrees.len();
+        }
+    }
+
+    fn select_worktree_prev(&mut self) {
+        if self.worktrees.is_empty() {
+            self.selected_worktree = 0;
+        } else if self.selected_worktree == 0 {
+            self.selected_worktree = self.worktrees.len() - 1;
+        } else {
+            self.selected_worktree -= 1;
+        }
+    }
+
+    fn next_worktree_pane(&mut self) {
+        self.worktree_focus = match self.worktree_focus {
+            WorktreePane::Canvas => WorktreePane::Details,
+            WorktreePane::Details => WorktreePane::Actions,
+            WorktreePane::Actions => WorktreePane::Canvas,
+        };
+    }
+
+    fn cycle_worktree_base_left(&mut self) {
+        self.new_worktree_base = match self.new_worktree_base {
+            WorktreeCreateBase::Main => WorktreeCreateBase::SelectedWithChanges,
+            WorktreeCreateBase::Selected => WorktreeCreateBase::Main,
+            WorktreeCreateBase::SelectedWithChanges => WorktreeCreateBase::Selected,
+        };
+    }
+
+    fn cycle_worktree_base_right(&mut self) {
+        self.new_worktree_base = match self.new_worktree_base {
+            WorktreeCreateBase::Main => WorktreeCreateBase::Selected,
+            WorktreeCreateBase::Selected => WorktreeCreateBase::SelectedWithChanges,
+            WorktreeCreateBase::SelectedWithChanges => WorktreeCreateBase::Main,
+        };
+    }
 }
 
 struct TuiGuard;
@@ -185,14 +289,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
     refresh_status(&mut app);
 
-    let tick_rate = Duration::from_millis(700);
-    let mut last_tick = Instant::now();
+    let status_tick_rate = Duration::from_millis(900);
+    let mut last_status_tick = Instant::now();
     let mut should_quit = false;
 
     while !should_quit {
         terminal.draw(|frame| draw_ui(frame, &app))?;
 
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        let timeout = status_tick_rate.saturating_sub(last_status_tick.elapsed());
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -209,14 +313,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Mode::CommitInput => {
                             handle_commit_mode_key(&mut app, key.code)?;
                         }
+                        Mode::WorktreeCreateInput => {
+                            handle_worktree_create_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeBranchConflictConfirm => {
+                            handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
+                        }
                     }
                 }
             }
         }
 
-        if last_tick.elapsed() >= tick_rate {
+        if last_status_tick.elapsed() >= status_tick_rate {
             refresh_status(&mut app);
-            last_tick = Instant::now();
+            last_status_tick = Instant::now();
         }
     }
 
@@ -225,8 +335,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+    if app.view_mode == ViewMode::Worktrees {
+        return handle_worktree_mode_key(app, code);
+    }
+
     match code {
         KeyCode::Char('q') => return Ok(true),
+        KeyCode::Char('w') => {
+            app.view_mode = ViewMode::Worktrees;
+            app.worktree_focus = WorktreePane::Canvas;
+            app.show_panel_help = false;
+            app.status_line = "Switched to worktree navigator".to_string();
+            refresh_worktrees(app);
+        }
         KeyCode::Left | KeyCode::Char('h') => app.focus_left(),
         KeyCode::Right | KeyCode::Char('l') => app.focus_right(),
         KeyCode::Down | KeyCode::Char('j') => match app.active_pane {
@@ -268,6 +389,154 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
     }
 
     Ok(false)
+}
+
+fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
+    match code {
+        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Char('w') => {
+            app.view_mode = ViewMode::Changes;
+            app.show_panel_help = false;
+            app.status_line = "Switched to changed files view".to_string();
+        }
+        KeyCode::Tab => {
+            app.next_worktree_pane();
+            app.show_panel_help = false;
+        }
+        KeyCode::Char('h') => {
+            app.show_panel_help = !app.show_panel_help;
+        }
+        KeyCode::Left => move_worktree_selection(app, NavDirection::Left),
+        KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
+        KeyCode::Up => move_worktree_selection(app, NavDirection::Up),
+        KeyCode::Down => move_worktree_selection(app, NavDirection::Down),
+        KeyCode::Char('j') => app.select_worktree_next(),
+        KeyCode::Char('k') => app.select_worktree_prev(),
+        KeyCode::Char('r') => {
+            refresh_worktrees(app);
+            app.status_line = "Refreshed worktree list".to_string();
+        }
+        KeyCode::Char('a') => {
+            app.mode = Mode::WorktreeCreateInput;
+            app.new_worktree_branch.clear();
+            app.new_worktree_base = WorktreeCreateBase::Selected;
+            app.status_line =
+                "Create worktree: choose base with ←/→, then type branch name".to_string();
+        }
+        KeyCode::Char('f') => {
+            if let Some(selected) = app.selected_worktree() {
+                let output = run_git(&["-C", selected.path.as_str(), "fetch", "--all", "--prune"])?;
+                app.status_line = output;
+                refresh_worktrees(app);
+            }
+        }
+        KeyCode::Char('p') => {
+            if let Some(selected) = app.selected_worktree() {
+                let output = run_git(&["-C", selected.path.as_str(), "pull", "--ff-only"])?;
+                app.status_line = output;
+                refresh_worktrees(app);
+            }
+        }
+        KeyCode::Char('x') => {
+            app.status_line = run_git(&["worktree", "prune"])?;
+            refresh_worktrees(app);
+        }
+        KeyCode::Char('d') => {
+            app.status_line = remove_selected_worktree(app)?;
+            refresh_worktrees(app);
+            refresh_status(app);
+        }
+        _ => {}
+    }
+
+    Ok(false)
+}
+
+fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.status_line = "Create worktree cancelled".to_string();
+        }
+        KeyCode::Left => {
+            app.cycle_worktree_base_left();
+        }
+        KeyCode::Right => {
+            app.cycle_worktree_base_right();
+        }
+        KeyCode::Enter => {
+            let branch = app.new_worktree_branch.trim();
+            if branch.is_empty() {
+                app.status_line = "Branch name is required".to_string();
+            } else {
+                let root = create_root_for_app(app);
+                if branch_exists(root.as_str(), branch) {
+                    app.pending_create_branch = branch.to_string();
+                    app.confirm_delete_branch_yes = false;
+                    app.mode = Mode::WorktreeBranchConflictConfirm;
+                    app.status_line = format!(
+                        "Branch '{}' already exists. Confirm delete and recreate.",
+                        branch
+                    );
+                    return Ok(());
+                }
+
+                app.status_line = create_worktree(app, branch)?;
+                refresh_worktrees(app);
+                refresh_status(app);
+            }
+            app.mode = Mode::Normal;
+            app.new_worktree_branch.clear();
+        }
+        KeyCode::Backspace => {
+            app.new_worktree_branch.pop();
+        }
+        KeyCode::Char(c) => {
+            app.new_worktree_branch.push(c);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn handle_branch_conflict_confirm_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.confirm_delete_branch_yes = false;
+            app.pending_create_branch.clear();
+            app.status_line = "Create worktree cancelled".to_string();
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.confirm_delete_branch_yes = !app.confirm_delete_branch_yes;
+        }
+        KeyCode::Char('y') => app.confirm_delete_branch_yes = true,
+        KeyCode::Char('n') => app.confirm_delete_branch_yes = false,
+        KeyCode::Enter => {
+            if app.confirm_delete_branch_yes {
+                let branch = app.pending_create_branch.clone();
+                let root = create_root_for_app(app);
+                app.status_line =
+                    delete_branch_and_create_worktree(app, root.as_str(), branch.as_str())?;
+                refresh_worktrees(app);
+                refresh_status(app);
+            } else {
+                app.status_line = "Create worktree cancelled (kept existing branch)".to_string();
+            }
+
+            app.mode = Mode::Normal;
+            app.confirm_delete_branch_yes = false;
+            app.pending_create_branch.clear();
+            app.new_worktree_branch.clear();
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 fn handle_commit_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
@@ -347,16 +616,175 @@ fn refresh_status(app: &mut App) {
     }
 
     refresh_selected_overview(app);
+    refresh_worktrees(app);
 }
 
-fn parse_branch_line(app: &mut App, line: &str) {
-    let branch: String;
+fn refresh_worktrees(app: &mut App) {
+    let output = match git_output(&["worktree", "list", "--porcelain"]) {
+        Some(text) => text,
+        None => {
+            app.worktrees.clear();
+            app.selected_worktree = 0;
+            return;
+        }
+    };
+
+    let current_path = std::env::current_dir()
+        .ok()
+        .map(|path| normalize_path(path.to_string_lossy().as_ref()));
+
+    let mut entries: Vec<WorktreeEntry> = Vec::new();
+    let mut current = WorktreeEntry::default();
+    let mut in_block = false;
+
+    for line in output.lines() {
+        if line.trim().is_empty() {
+            if in_block {
+                hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+                entries.push(current.clone());
+                current = WorktreeEntry::default();
+                in_block = false;
+            }
+            continue;
+        }
+
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if in_block {
+                hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+                entries.push(current.clone());
+                current = WorktreeEntry::default();
+            }
+            current.path = path.trim().to_string();
+            in_block = true;
+            continue;
+        }
+
+        if let Some(head) = line.strip_prefix("HEAD ") {
+            current.head = head.trim().to_string();
+            continue;
+        }
+
+        if let Some(branch) = line.strip_prefix("branch ") {
+            current.branch = branch
+                .trim()
+                .strip_prefix("refs/heads/")
+                .unwrap_or(branch.trim())
+                .to_string();
+            continue;
+        }
+
+        if line == "detached" {
+            current.detached = true;
+            if current.branch.is_empty() {
+                current.branch = "detached".to_string();
+            }
+            continue;
+        }
+
+        if line == "bare" {
+            current.bare = true;
+            continue;
+        }
+
+        if line.starts_with("locked") {
+            current.locked = true;
+            continue;
+        }
+
+        if line.starts_with("prunable") {
+            current.prunable = true;
+            continue;
+        }
+    }
+
+    if in_block {
+        hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+        entries.push(current);
+    }
+
+    entries.sort_by(|a, b| {
+        b.is_current
+            .cmp(&a.is_current)
+            .then_with(|| a.branch.cmp(&b.branch))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+
+    app.worktrees = entries;
+    if app.worktrees.is_empty() {
+        app.selected_worktree = 0;
+    } else if app.selected_worktree >= app.worktrees.len() {
+        app.selected_worktree = app.worktrees.len() - 1;
+    }
+}
+
+fn hydrate_worktree_runtime_state(entry: &mut WorktreeEntry, current_path: Option<&str>) {
+    let normalized = normalize_path(entry.path.as_str());
+    entry.is_current = current_path
+        .map(|cwd| cwd == normalized.as_str())
+        .unwrap_or(false);
+
+    if entry.branch.is_empty() {
+        entry.branch = "detached".to_string();
+    }
+
+    let (dirty, ahead, behind) = worktree_branch_state(entry.path.as_str());
+    entry.dirty = dirty;
+    entry.ahead = ahead;
+    entry.behind = behind;
+    entry.parent_hint = read_worktree_parent_hint(entry.path.as_str());
+}
+
+fn read_worktree_parent_hint(path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            path,
+            "config",
+            "--worktree",
+            "--get",
+            "gitfetch.parent",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
+    let output = match Command::new("git")
+        .args(["-C", path, "status", "--porcelain=1", "-b", "-uall"])
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => return (false, 0, 0),
+    };
+
+    let mut lines = output.lines();
+    let mut ahead = 0usize;
+    let mut behind = 0usize;
+    if let Some(head) = lines.next() {
+        let (_, parsed_ahead, parsed_behind) = parse_branch_snapshot(head);
+        ahead = parsed_ahead;
+        behind = parsed_behind;
+    }
+    let dirty = lines.any(|line| !line.trim().is_empty());
+    (dirty, ahead, behind)
+}
+
+fn parse_branch_snapshot(line: &str) -> (String, usize, usize) {
     let mut ahead = 0usize;
     let mut behind = 0usize;
 
     let stripped = line.strip_prefix("## ").unwrap_or(line);
-    if let Some((name, rest)) = stripped.split_once("...") {
-        branch = name.trim().to_string();
+    let branch = if let Some((name, rest)) = stripped.split_once("...") {
         if let Some(start) = rest.find('[') {
             if let Some(end) = rest[start + 1..].find(']') {
                 let info = &rest[start + 1..start + 1 + end];
@@ -370,10 +798,371 @@ fn parse_branch_line(app: &mut App, line: &str) {
                 }
             }
         }
+        name.trim().to_string()
     } else {
-        branch = stripped.trim().to_string();
+        stripped.trim().to_string()
+    };
+
+    (branch, ahead, behind)
+}
+
+fn normalize_path(path: &str) -> String {
+    fs::canonicalize(Path::new(path))
+        .unwrap_or_else(|_| Path::new(path).to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn remove_selected_worktree(app: &App) -> Result<String, Box<dyn Error>> {
+    let Some(selected) = app.selected_worktree() else {
+        return Ok("No worktree selected".to_string());
+    };
+
+    if selected.is_current {
+        return Ok("Refusing to remove current worktree".to_string());
     }
 
+    if selected.dirty {
+        return Ok("Refusing to remove dirty worktree (clean it first)".to_string());
+    }
+
+    run_git(&["worktree", "remove", selected.path.as_str()])
+}
+
+#[derive(Clone, Copy)]
+enum NavDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+fn move_worktree_selection(app: &mut App, direction: NavDirection) {
+    if app.worktrees.len() < 2 || app.selected_worktree >= app.worktrees.len() {
+        return;
+    }
+
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let points = graph_layout(&parents);
+    let (cx, cy) = points[app.selected_worktree];
+    let mut best_idx: Option<usize> = None;
+    let mut best_score = f32::MAX;
+
+    for (idx, (x, y)) in points.iter().enumerate() {
+        if idx == app.selected_worktree {
+            continue;
+        }
+
+        let dx = *x - cx;
+        let dy = *y - cy;
+        let in_front = match direction {
+            NavDirection::Left => dx < -0.15,
+            NavDirection::Right => dx > 0.15,
+            NavDirection::Up => dy < -0.15,
+            NavDirection::Down => dy > 0.15,
+        };
+        if !in_front {
+            continue;
+        }
+
+        let directional_penalty = match direction {
+            NavDirection::Left | NavDirection::Right => dy.abs() * 1.7,
+            NavDirection::Up | NavDirection::Down => dx.abs() * 1.7,
+        };
+        let score = dx.abs() + dy.abs() + directional_penalty;
+        if score < best_score {
+            best_score = score;
+            best_idx = Some(idx);
+        }
+    }
+
+    if let Some(idx) = best_idx {
+        app.selected_worktree = idx;
+    }
+}
+
+fn create_root_for_app(app: &App) -> String {
+    app.selected_worktree()
+        .and_then(|wt| repo_container_from_path(wt.path.as_str()))
+        .or_else(|| repo_container_from_path("."))
+        .or_else(repo_root)
+        .unwrap_or_else(|| ".".to_string())
+}
+
+fn branch_exists(root: &str, branch: &str) -> bool {
+    Command::new("git")
+        .args([
+            "-C",
+            root,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{}", branch),
+        ])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn delete_branch_and_create_worktree(
+    app: &App,
+    root: &str,
+    branch: &str,
+) -> Result<String, Box<dyn Error>> {
+    let delete = Command::new("git")
+        .args(["-C", root, "branch", "-D", branch])
+        .output()?;
+    if !delete.status.success() {
+        let stderr = String::from_utf8_lossy(&delete.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&delete.stdout).trim().to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        return Ok(format!("Failed deleting branch '{}': {}", branch, reason));
+    }
+
+    create_worktree(app, branch)
+}
+
+fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
+    let sanitized = branch.replace('/', "-");
+    let root = create_root_for_app(app);
+    let container = format!("{}/.gitfetch-worktrees", root);
+    let _ = fs::create_dir_all(container.as_str());
+    let path = format!("{}/.gitfetch-worktrees/{}", root, sanitized);
+    if Path::new(path.as_str()).exists() {
+        return Ok(format!(
+            "Target path already exists: {} (pick another branch name)",
+            path
+        ));
+    }
+    let (start_point, parent_branch, source_path) = worktree_create_source(app);
+
+    let output = Command::new("git")
+        .args([
+            "-C",
+            root.as_str(),
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            path.as_str(),
+            start_point.as_str(),
+        ])
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if output.status.success() {
+        let verified = Command::new("git")
+            .args(["-C", root.as_str(), "worktree", "list", "--porcelain"])
+            .output()
+            .ok()
+            .map(|out| String::from_utf8_lossy(&out.stdout).to_string())
+            .map(|list| {
+                list.lines()
+                    .any(|line| line.trim() == format!("worktree {}", path).as_str())
+            })
+            .unwrap_or(false);
+
+        let mut message = if stdout.is_empty() {
+            format!(
+                "Created worktree '{}' at {} from {}",
+                branch, path, start_point
+            )
+        } else {
+            stdout
+        };
+
+        if app.new_worktree_base == WorktreeCreateBase::SelectedWithChanges {
+            if let Some(diff) = capture_uncommitted_patch(source_path.as_str())? {
+                if diff.trim().is_empty() {
+                    message.push_str(" (no uncommitted tracked changes to apply)");
+                } else {
+                    let apply_result = run_git_with_input(
+                        &["-C", path.as_str(), "apply", "--whitespace=nowarn", "-"],
+                        diff.as_bytes(),
+                    )?;
+                    if apply_result.success {
+                        message.push_str(" + carried uncommitted tracked changes");
+                    } else {
+                        message.push_str(" (created, but failed to apply uncommitted changes)");
+                        if !apply_result.stderr.is_empty() {
+                            message.push_str(": ");
+                            message.push_str(apply_result.stderr.as_str());
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = run_git(&[
+            "-C",
+            path.as_str(),
+            "config",
+            "--worktree",
+            "gitfetch.parent",
+            parent_branch.as_str(),
+        ]);
+
+        if !verified {
+            message.push_str(
+                " (warning: creation reported success but worktree was not found in list)",
+            );
+        }
+
+        Ok(message)
+    } else if !stderr.is_empty() {
+        let tail = stderr
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or(stderr.as_str())
+            .to_string();
+        Ok(format!(
+            "Failed creating worktree '{}' from '{}': {}",
+            branch, start_point, tail
+        ))
+    } else if !stdout.is_empty() {
+        Ok(stdout)
+    } else {
+        Ok("git worktree add failed".to_string())
+    }
+}
+
+fn repo_root() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if root.is_empty() {
+        None
+    } else {
+        Some(root)
+    }
+}
+
+fn repo_container_from_path(path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", path, "rev-parse", "--git-common-dir"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        None
+    } else {
+        let common_dir = if Path::new(raw.as_str()).is_absolute() {
+            PathBuf::from(raw)
+        } else {
+            Path::new(path).join(raw)
+        };
+        let common_abs = fs::canonicalize(common_dir.as_path()).unwrap_or(common_dir);
+        let parent = common_abs.parent()?.to_string_lossy().to_string();
+        if parent.is_empty() {
+            None
+        } else {
+            Some(parent)
+        }
+    }
+}
+
+fn selected_branch_name(app: &App) -> String {
+    if let Some(selected) = app.selected_worktree() {
+        if !selected.detached && !selected.branch.is_empty() {
+            return selected.branch.clone();
+        }
+        if !selected.head.is_empty() {
+            return selected.head.clone();
+        }
+    }
+
+    let raw = app.branch.trim();
+    let name = raw
+        .strip_prefix("HEAD (detached at ")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or(raw);
+    if name.is_empty() {
+        "HEAD".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+fn worktree_create_source(app: &App) -> (String, String, String) {
+    match app.new_worktree_base {
+        WorktreeCreateBase::Main => {
+            let main = resolve_main_branch();
+            (main.clone(), main, ".".to_string())
+        }
+        WorktreeCreateBase::Selected | WorktreeCreateBase::SelectedWithChanges => {
+            let selected = selected_branch_name(app);
+            let source_path = app
+                .selected_worktree()
+                .map(|wt| wt.path.clone())
+                .unwrap_or_else(|| ".".to_string());
+            (selected.clone(), selected, source_path)
+        }
+    }
+}
+
+fn resolve_main_branch() -> String {
+    if let Some(main) = git_output(&["show-ref", "--verify", "--quiet", "refs/heads/main"]) {
+        if main.is_empty() {
+            return "main".to_string();
+        }
+    }
+    if let Some(master) = git_output(&["show-ref", "--verify", "--quiet", "refs/heads/master"]) {
+        if master.is_empty() {
+            return "master".to_string();
+        }
+    }
+    "main".to_string()
+}
+
+fn capture_uncommitted_patch(source_path: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .args(["-C", source_path, "diff", "--binary", "HEAD"])
+        .output()?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+}
+
+struct CommandResult {
+    success: bool,
+    stderr: String,
+}
+
+fn run_git_with_input(args: &[&str], input: &[u8]) -> Result<CommandResult, Box<dyn Error>> {
+    let mut child = Command::new("git")
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(input)?;
+    }
+
+    let output = child.wait_with_output()?;
+    Ok(CommandResult {
+        success: output.status.success(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
+fn parse_branch_line(app: &mut App, line: &str) {
+    let (branch, ahead, behind) = parse_branch_snapshot(line);
     app.branch = branch;
     app.ahead = ahead;
     app.behind = behind;
@@ -901,53 +1690,59 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         frame.area(),
     );
 
-    let outer = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
-        .split(frame.area());
+    if app.view_mode == ViewMode::Changes {
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(1)
+            .constraints([
+                Constraint::Percentage(22),
+                Constraint::Percentage(56),
+                Constraint::Percentage(22),
+            ])
+            .split(frame.area());
 
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .spacing(1)
-        .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(60),
-            Constraint::Percentage(20),
-        ])
-        .split(outer[0]);
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .spacing(1)
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(columns[2]);
 
-    draw_files_panel(frame, app, columns[0]);
-    draw_selected_overview_panel(frame, app, columns[1]);
-    draw_pulse_panel(frame, app, columns[2]);
+        draw_files_panel(frame, app, columns[0]);
+        draw_selected_overview_panel(frame, app, columns[1]);
+        draw_pulse_panel(frame, app, right[0]);
+        draw_changes_actions_panel(frame, right[1]);
+    } else {
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(1)
+            .constraints([Constraint::Percentage(72), Constraint::Percentage(28)])
+            .split(frame.area());
 
-    let footer = Paragraph::new(Line::from(vec![
-        Span::styled("h/l", Style::default().fg(Color::LightBlue)),
-        Span::raw(" focus  "),
-        Span::styled("j/k", Style::default().fg(Color::LightBlue)),
-        Span::raw(" move/scroll  "),
-        Span::styled("space", Style::default().fg(Color::LightGreen)),
-        Span::raw(" stage/unstage  "),
-        Span::styled("c", Style::default().fg(Color::Yellow)),
-        Span::raw(" commit  "),
-        Span::styled("p", Style::default().fg(Color::Magenta)),
-        Span::raw(" push  "),
-        Span::styled("r", Style::default().fg(Color::Cyan)),
-        Span::raw(" refresh  "),
-        Span::styled("q", Style::default().fg(Color::Red)),
-        Span::raw(" quit"),
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("controls")
-            .style(Style::default().bg(Color::Black))
-            .border_style(Style::default().fg(Color::DarkGray)),
-    )
-    .style(Style::default().bg(Color::Black));
-    frame.render_widget(footer, outer[1]);
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .spacing(1)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(columns[1]);
+
+        draw_worktree_canvas_panel(frame, app, columns[0]);
+        draw_worktree_details_panel(frame, app, right[0]);
+        draw_worktree_actions_panel(frame, app, right[1]);
+    }
 
     if matches!(app.mode, Mode::CommitInput) {
         draw_commit_modal(frame, app);
+    }
+
+    if matches!(app.mode, Mode::WorktreeCreateInput) {
+        draw_worktree_create_modal(frame, app);
+    }
+
+    if matches!(app.mode, Mode::WorktreeBranchConflictConfirm) {
+        draw_branch_conflict_confirm_modal(frame, app);
+    }
+
+    if app.view_mode == ViewMode::Worktrees && app.show_panel_help {
+        draw_worktree_help_modal(frame, app);
     }
 }
 
@@ -1291,6 +2086,815 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
     frame.render_widget(panel, area);
 }
 
+fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("w", Style::default().fg(Color::LightBlue)),
+            Span::raw(" worktree canvas"),
+        ]),
+        Line::from(vec![
+            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
+            Span::raw(" focus files/overview"),
+        ]),
+        Line::from(vec![
+            Span::styled("j/k", Style::default().fg(Color::LightBlue)),
+            Span::raw(" move selection/scroll"),
+        ]),
+        Line::from(vec![
+            Span::styled("space|enter", Style::default().fg(Color::LightGreen)),
+            Span::raw(" stage or unstage"),
+        ]),
+        Line::from(vec![
+            Span::styled("c", Style::default().fg(Color::Yellow)),
+            Span::raw(" commit"),
+        ]),
+        Line::from(vec![
+            Span::styled("p", Style::default().fg(Color::Magenta)),
+            Span::raw(" push"),
+        ]),
+        Line::from(vec![
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::raw(" refresh"),
+        ]),
+        Line::from(vec![
+            Span::styled("q", Style::default().fg(Color::Red)),
+            Span::raw(" quit"),
+        ]),
+    ];
+
+    let panel = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title("actions")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Black))
+                .border_style(Style::default().fg(Color::Gray)),
+        )
+        .style(Style::default().bg(Color::Black).fg(Color::White))
+        .alignment(Alignment::Left);
+
+    frame.render_widget(panel, area);
+}
+
+fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let border_color = if app.worktree_focus == WorktreePane::Canvas {
+        Color::Cyan
+    } else {
+        Color::Gray
+    };
+    let block = Block::default()
+        .title("worktree canvas [h]")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(Color::Black));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let root_branch = current_session_branch(app);
+    let main_label = format!("[current: {}]", truncate_text(root_branch.as_str(), 18));
+    let main_anchor_x = inner.x.saturating_add(inner.width / 2);
+    let main_anchor_y = inner.y.saturating_add(1);
+    let main_x = main_anchor_x.saturating_sub((main_label.chars().count() as u16) / 2);
+    frame.render_widget(
+        Paragraph::new(main_label.as_str()).style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::LightMagenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Rect::new(main_x, main_anchor_y, main_label.chars().count() as u16, 1),
+    );
+
+    if app.worktrees.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No worktrees. Press 'a' to create one.")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::DarkGray)),
+            inner,
+        );
+        return;
+    }
+
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let positions = render_positions(inner, &parents);
+    for (idx, parent) in parents.iter().enumerate() {
+        let to = positions[idx];
+        let from = if let Some(parent_idx) = parent {
+            positions[*parent_idx]
+        } else {
+            (main_anchor_x, main_anchor_y)
+        };
+        draw_canvas_edge(frame, inner, from, to);
+    }
+
+    for (idx, entry) in app.worktrees.iter().enumerate() {
+        let selected = idx == app.selected_worktree;
+        let label = canvas_node_label(entry, selected);
+        let (anchor_x, anchor_y) = positions[idx];
+        let label_width = label.chars().count() as u16;
+        let mut x = anchor_x.saturating_sub(label_width / 2);
+        if x + label_width >= inner.right() {
+            x = inner.right().saturating_sub(label_width + 1);
+        }
+        if x <= inner.x {
+            x = inner.x.saturating_add(1);
+        }
+        let node_rect = Rect::new(
+            x,
+            anchor_y.min(inner.bottom().saturating_sub(1)),
+            label_width,
+            1,
+        );
+        let style = if selected {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD)
+        } else if entry.dirty {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        frame.render_widget(Paragraph::new(label).style(style), node_rect);
+    }
+}
+
+fn canvas_node_label(entry: &WorktreeEntry, selected: bool) -> String {
+    let mut name = if entry.detached {
+        "detached".to_string()
+    } else {
+        entry.branch.clone()
+    };
+    if name.len() > 20 {
+        name = truncate_text(name.as_str(), 20);
+    }
+
+    let state = if entry.dirty { "dirty" } else { "clean" };
+    if selected {
+        format!("[{name} | {state}]")
+    } else {
+        format!("({name} | {state})")
+    }
+}
+
+fn render_positions(area: Rect, parents: &[Option<usize>]) -> Vec<(u16, u16)> {
+    let logical = graph_layout(parents);
+    let mut points = Vec::with_capacity(logical.len());
+    let width = area.width.saturating_sub(8).max(8) as f32;
+    let height = area.height.saturating_sub(7).max(6) as f32;
+
+    for (x, y) in logical {
+        let sx = (x * width).round().max(0.0) as u16;
+        let sy = (y * height).round().max(0.0) as u16;
+        points.push((area.x + 4 + sx, area.y + 4 + sy));
+    }
+
+    points
+}
+
+fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
+    let count = parents.len();
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let depths = graph_depths(parents);
+    let max_depth = depths.iter().copied().max().unwrap_or(0).max(1);
+    let mut by_depth: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for (idx, depth) in depths.iter().enumerate() {
+        by_depth.entry(*depth).or_default().push(idx);
+    }
+
+    let mut positions = vec![(0.5f32, 0.5f32); count];
+    for (depth, nodes) in by_depth {
+        let n = nodes.len().max(1);
+        for (rank, idx) in nodes.iter().enumerate() {
+            let x = (rank as f32 + 1.0) / (n as f32 + 1.0);
+            let y = 0.15 + ((depth as f32 + 1.0) / (max_depth as f32 + 1.0)) * 0.78;
+            positions[*idx] = (x, y);
+        }
+    }
+
+    for _ in 0..100 {
+        let mut forces = vec![(0.0f32, 0.0f32); count];
+
+        for i in 0..count {
+            for j in (i + 1)..count {
+                let dx = positions[i].0 - positions[j].0;
+                let dy = positions[i].1 - positions[j].1;
+                let dist_sq = (dx * dx + dy * dy).max(0.0006);
+                let force = 0.0022 / dist_sq;
+                let nx = dx / dist_sq.sqrt();
+                let ny = dy / dist_sq.sqrt();
+                forces[i].0 += nx * force;
+                forces[i].1 += ny * force;
+                forces[j].0 -= nx * force;
+                forces[j].1 -= ny * force;
+            }
+        }
+
+        for (idx, parent_opt) in parents.iter().enumerate() {
+            let (tx, ty) = if let Some(parent_idx) = parent_opt {
+                positions[*parent_idx]
+            } else {
+                (0.5, 0.06)
+            };
+
+            let dx = tx - positions[idx].0;
+            let dy = ty - positions[idx].1;
+            let dist = (dx * dx + dy * dy).sqrt().max(0.001);
+            let desired = if parent_opt.is_some() { 0.18 } else { 0.24 };
+            let spring = (dist - desired) * 0.024;
+            forces[idx].0 += (dx / dist) * spring;
+            forces[idx].1 += (dy / dist) * spring;
+
+            let target_y = 0.15 + ((depths[idx] as f32 + 1.0) / (max_depth as f32 + 1.0)) * 0.78;
+            forces[idx].1 += (target_y - positions[idx].1) * 0.015;
+            forces[idx].0 += (0.5 - positions[idx].0) * 0.002;
+        }
+
+        for idx in 0..count {
+            positions[idx].0 = (positions[idx].0 + forces[idx].0).clamp(0.06, 0.94);
+            positions[idx].1 = (positions[idx].1 + forces[idx].1).clamp(0.12, 0.95);
+        }
+    }
+
+    positions
+}
+
+fn graph_depths(parents: &[Option<usize>]) -> Vec<usize> {
+    fn depth_for(i: usize, parents: &[Option<usize>], cache: &mut [Option<usize>]) -> usize {
+        if let Some(depth) = cache[i] {
+            return depth;
+        }
+
+        let depth = match parents[i] {
+            Some(parent) if parent != i => depth_for(parent, parents, cache) + 1,
+            _ => 0,
+        };
+        cache[i] = Some(depth);
+        depth
+    }
+
+    let mut cache = vec![None; parents.len()];
+    (0..parents.len())
+        .map(|i| depth_for(i, parents, &mut cache))
+        .collect()
+}
+
+fn worktree_parent_map(worktrees: &[WorktreeEntry], root_branch: &str) -> Vec<Option<usize>> {
+    let mut branch_to_idx: BTreeMap<String, usize> = BTreeMap::new();
+    for (idx, wt) in worktrees.iter().enumerate() {
+        if !wt.detached && !wt.branch.is_empty() {
+            branch_to_idx.entry(wt.branch.clone()).or_insert(idx);
+        }
+    }
+
+    let mut parents = vec![None; worktrees.len()];
+    for (idx, wt) in worktrees.iter().enumerate() {
+        if wt.detached || is_root_branch(wt.branch.as_str(), root_branch) {
+            continue;
+        }
+
+        if let Some(hint) = wt.parent_hint.as_deref() {
+            if let Some(parent_idx) = branch_to_idx.get(hint) {
+                if *parent_idx != idx {
+                    parents[idx] = Some(*parent_idx);
+                    continue;
+                }
+            }
+        }
+
+        if let Some(parent_idx) = find_branch_parent_idx(idx, wt.branch.as_str(), &branch_to_idx) {
+            parents[idx] = Some(parent_idx);
+        }
+    }
+
+    parents
+}
+
+fn find_branch_parent_idx(
+    current_idx: usize,
+    branch: &str,
+    branch_to_idx: &BTreeMap<String, usize>,
+) -> Option<usize> {
+    let mut parts: Vec<&str> = branch.split('/').collect();
+    while parts.len() > 1 {
+        parts.pop();
+        let candidate = parts.join("/");
+        if let Some(idx) = branch_to_idx.get(candidate.as_str()) {
+            if *idx != current_idx {
+                return Some(*idx);
+            }
+        }
+    }
+    None
+}
+
+fn is_root_branch(branch: &str, root_branch: &str) -> bool {
+    branch == root_branch
+}
+
+fn worktree_parent_label(app: &App, parents: &[Option<usize>]) -> String {
+    if app.selected_worktree >= app.worktrees.len() {
+        return current_session_branch(app);
+    }
+
+    if let Some(parent_idx) = parents.get(app.selected_worktree).and_then(|v| *v) {
+        if let Some(parent) = app.worktrees.get(parent_idx) {
+            if parent.detached {
+                return "detached".to_string();
+            }
+            return parent.branch.clone();
+        }
+    }
+
+    current_session_branch(app)
+}
+
+fn current_session_branch(app: &App) -> String {
+    let raw = app.branch.trim();
+    let name = raw
+        .strip_prefix("HEAD (detached at ")
+        .and_then(|value| value.strip_suffix(')'))
+        .unwrap_or(raw);
+    if name.is_empty() {
+        "current".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+fn draw_canvas_edge(frame: &mut ratatui::Frame<'_>, area: Rect, from: (u16, u16), to: (u16, u16)) {
+    let mut x0 = from.0 as i32;
+    let mut y0 = from.1 as i32 + 1;
+    let x1 = to.0 as i32;
+    let y1 = to.1 as i32;
+    let edge_char = edge_base_char(x1 - x0, y1 - y0);
+
+    let dx = (x1 - x0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let dy = -(y1 - y0).abs();
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut step = 0usize;
+
+    loop {
+        if x0 >= area.x as i32
+            && x0 < area.right() as i32
+            && y0 >= area.y as i32
+            && y0 < area.bottom() as i32
+        {
+            let glyph = if step % 9 == 0 {
+                "o"
+            } else if step % 4 == 0 {
+                ":"
+            } else {
+                edge_char
+            };
+            frame.render_widget(
+                Paragraph::new(glyph).style(Style::default().fg(Color::DarkGray)),
+                Rect::new(x0 as u16, y0 as u16, 1, 1),
+            );
+        }
+
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+
+        let e2 = 2 * err;
+        if e2 >= dy {
+            if x0 == x1 {
+                break;
+            }
+            err += dy;
+            x0 += sx;
+        }
+        if e2 <= dx {
+            if y0 == y1 {
+                break;
+            }
+            err += dx;
+            y0 += sy;
+        }
+        step += 1;
+    }
+}
+
+fn edge_base_char(dx: i32, dy: i32) -> &'static str {
+    let ax = dx.abs();
+    let ay = dy.abs();
+    if ax > ay * 2 {
+        "-"
+    } else if ay > ax * 2 {
+        "|"
+    } else if (dx >= 0 && dy >= 0) || (dx < 0 && dy < 0) {
+        "\\"
+    } else {
+        "/"
+    }
+}
+
+fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let mut lines: Vec<Line<'_>> = Vec::new();
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+
+    if let Some(selected) = app.selected_worktree() {
+        lines.push(Line::from(vec![
+            Span::styled("branch: ", Style::default().fg(Color::Gray)),
+            Span::styled(selected.branch.as_str(), Style::default().fg(Color::Cyan)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("path:   ", Style::default().fg(Color::Gray)),
+            Span::styled(selected.path.as_str(), Style::default().fg(Color::White)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("head:   ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                selected.head.as_str(),
+                Style::default().fg(Color::LightBlue),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("source: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                worktree_parent_label(app, &parents),
+                Style::default().fg(Color::LightMagenta),
+            ),
+        ]));
+        lines.push(Line::from(""));
+
+        lines.push(Line::from(vec![
+            Span::styled("dirty:  ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                if selected.dirty { "yes" } else { "no" },
+                Style::default().fg(if selected.dirty {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                }),
+            ),
+            Span::raw("   "),
+            Span::styled("locked: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                if selected.locked { "yes" } else { "no" },
+                Style::default().fg(if selected.locked {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                }),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("ahead:  ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                selected.ahead.to_string(),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("   "),
+            Span::styled("behind: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                selected.behind.to_string(),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("flags:  ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                worktree_flags(selected),
+                Style::default().fg(Color::LightMagenta),
+            ),
+        ]));
+        lines.push(Line::from(""));
+        let status_max = area.width.saturating_sub(4) as usize;
+        lines.push(Line::from(vec![Span::styled(
+            "status:",
+            Style::default().fg(Color::Gray),
+        )]));
+        for wrapped in wrap_text_lines(app.status_line.as_str(), status_max.max(12), 4) {
+            lines.push(Line::from(vec![Span::styled(
+                wrapped,
+                Style::default().fg(Color::White),
+            )]));
+        }
+    } else {
+        lines.push(Line::from("No worktree selected"));
+    }
+
+    let border_color = if app.worktree_focus == WorktreePane::Details {
+        Color::Cyan
+    } else {
+        Color::Gray
+    };
+
+    let panel = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title("details [h]")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .style(Style::default().bg(Color::Black)),
+        )
+        .style(Style::default().bg(Color::Black).fg(Color::White))
+        .alignment(Alignment::Left);
+
+    frame.render_widget(panel, area);
+}
+
+fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    let border_color = if app.worktree_focus == WorktreePane::Actions {
+        Color::Cyan
+    } else {
+        Color::Gray
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("w", Style::default().fg(Color::LightBlue)),
+            Span::raw(" file changes view"),
+        ]),
+        Line::from(vec![
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::raw(" refresh worktrees"),
+        ]),
+        Line::from(vec![
+            Span::styled("q", Style::default().fg(Color::Red)),
+            Span::raw(" quit"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("a", Style::default().fg(Color::LightGreen)),
+            Span::raw(" create worktree"),
+        ]),
+        Line::from(vec![
+            Span::styled("f", Style::default().fg(Color::Cyan)),
+            Span::raw(" fetch selected"),
+        ]),
+        Line::from(vec![
+            Span::styled("p", Style::default().fg(Color::Magenta)),
+            Span::raw(" pull selected"),
+        ]),
+        Line::from(vec![
+            Span::styled("d", Style::default().fg(Color::LightRed)),
+            Span::raw(" remove selected"),
+        ]),
+        Line::from(vec![
+            Span::styled("x", Style::default().fg(Color::Yellow)),
+            Span::raw(" prune stale"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("tab", Style::default().fg(Color::LightBlue)),
+            Span::raw(" switch panel"),
+        ]),
+        Line::from(vec![
+            Span::styled("h", Style::default().fg(Color::Yellow)),
+            Span::raw(" panel help"),
+        ]),
+        Line::from(vec![
+            Span::styled("arrows", Style::default().fg(Color::LightBlue)),
+            Span::raw(" move on canvas"),
+        ]),
+        Line::from(vec![
+            Span::styled("j/k", Style::default().fg(Color::LightBlue)),
+            Span::raw(" cycle nodes"),
+        ]),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("actions [h]")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(border_color))
+                    .style(Style::default().bg(Color::Black)),
+            )
+            .style(Style::default().fg(Color::White)),
+        area,
+    );
+}
+
+fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(64, 42, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let lines = worktree_help_lines(app.worktree_focus);
+    let panel = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title("Panel Help")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .style(Style::default().bg(Color::Black)),
+        )
+        .style(Style::default().fg(Color::White));
+
+    frame.render_widget(panel, popup);
+}
+
+fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
+    match pane {
+        WorktreePane::Canvas => vec![
+            Line::from("Canvas panel"),
+            Line::from("- Graph root is [current: <branch>]"),
+            Line::from("- Dotted edges show inferred branch parent links"),
+            Line::from("- Arrow keys: move to nearest node in direction"),
+            Line::from("- j/k: cycle nodes by index"),
+            Line::from("- Selected node controls details/actions"),
+            Line::from("- tab: move focus to next panel"),
+            Line::from("- h: close this help"),
+        ],
+        WorktreePane::Details => vec![
+            Line::from("Details panel"),
+            Line::from("- Shows branch/path/head and repo flags"),
+            Line::from("- Shows ahead/behind and dirty/locked state"),
+            Line::from("- Reflects current canvas selection"),
+            Line::from("- tab: move focus to next panel"),
+            Line::from("- h: close this help"),
+        ],
+        WorktreePane::Actions => vec![
+            Line::from("Actions panel"),
+            Line::from("- a: create worktree from branch name"),
+            Line::from("- f: fetch selected worktree"),
+            Line::from("- p: pull selected worktree"),
+            Line::from("- d: remove selected worktree (safe checks)"),
+            Line::from("- x: prune stale worktrees"),
+            Line::from("- h: close this help"),
+        ],
+    }
+}
+
+fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(74, 30, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Create Worktree")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    frame.render_widget(
+        Paragraph::new(
+            "Choose source above, then type worktree branch. Enter creates '.gitfetch-worktrees/<branch>'",
+        )
+            .style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Base: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                worktree_create_base_label(app.new_worktree_base),
+                Style::default().fg(Color::LightGreen),
+            ),
+            Span::raw("  (use ←/→)"),
+        ]))
+        .block(Block::default().title("Source").borders(Borders::ALL))
+        .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.new_worktree_branch.as_str())
+            .block(Block::default().title("Branch").borders(Borders::ALL))
+            .style(Style::default().fg(Color::Cyan)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Esc cancels")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(72, 26, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Branch Exists")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightRed));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let branch = if app.pending_create_branch.is_empty() {
+        app.new_worktree_branch.as_str()
+    } else {
+        app.pending_create_branch.as_str()
+    };
+
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Branch '{}' already exists. Delete and create new worktree?",
+            branch
+        ))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(
+            "Default selection is No. Use ←/→ (or y/n), Enter to confirm, Esc to cancel.",
+        )
+        .style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let yes_style = if app.confirm_delete_branch_yes {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_delete_branch_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: delete + recreate ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: keep branch ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("No is selected by default")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn worktree_create_base_label(base: WorktreeCreateBase) -> &'static str {
+    match base {
+        WorktreeCreateBase::Main => "main branch",
+        WorktreeCreateBase::Selected => "selected branch/worktree",
+        WorktreeCreateBase::SelectedWithChanges => "selected branch/worktree + uncommitted changes",
+    }
+}
+
+fn worktree_flags(entry: &WorktreeEntry) -> String {
+    let mut flags: Vec<&str> = Vec::new();
+    if entry.is_current {
+        flags.push("current");
+    }
+    if entry.detached {
+        flags.push("detached");
+    }
+    if entry.bare {
+        flags.push("bare");
+    }
+    if entry.locked {
+        flags.push("locked");
+    }
+    if entry.prunable {
+        flags.push("prunable");
+    }
+
+    if flags.is_empty() {
+        "none".to_string()
+    } else {
+        flags.join(", ")
+    }
+}
+
 fn build_tree_items(files: &[FileEntry]) -> Vec<TreeItem> {
     let mut file_status: BTreeMap<String, PathStatus> = BTreeMap::new();
     let mut folder_status: BTreeMap<String, PathStatus> = BTreeMap::new();
@@ -1508,9 +3112,22 @@ fn overview_line_count(info: Option<&FileOverview>) -> usize {
 }
 
 fn truncate_text(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+
     let mut out = String::new();
     for (idx, ch) in text.chars().enumerate() {
-        if idx >= max_chars {
+        if idx >= max_chars - 3 {
             out.push_str("...");
             return out;
         }
@@ -1521,6 +3138,96 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
 
 fn single_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
+}
+
+fn wrap_text_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<String> {
+    if max_chars == 0 || max_lines == 0 {
+        return vec![String::new()];
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    for raw_line in text.lines() {
+        let words: Vec<&str> = raw_line.split_whitespace().collect();
+        if words.is_empty() {
+            out.push(String::new());
+            if out.len() >= max_lines {
+                return out;
+            }
+            continue;
+        }
+
+        let mut current = String::new();
+        for word in words {
+            let candidate = if current.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current, word)
+            };
+
+            if candidate.chars().count() <= max_chars {
+                current = candidate;
+                continue;
+            }
+
+            if !current.is_empty() {
+                out.push(current);
+                if out.len() >= max_lines {
+                    return out;
+                }
+                current = String::new();
+            }
+
+            if word.chars().count() <= max_chars {
+                current = word.to_string();
+            } else {
+                for segment in split_text_chunks(word, max_chars) {
+                    out.push(segment);
+                    if out.len() >= max_lines {
+                        return out;
+                    }
+                }
+            }
+        }
+
+        if !current.is_empty() {
+            out.push(current);
+            if out.len() >= max_lines {
+                return out;
+            }
+        }
+    }
+
+    if out.is_empty() {
+        out.push(String::new());
+    }
+
+    out
+}
+
+fn split_text_chunks(text: &str, chunk_size: usize) -> Vec<String> {
+    if chunk_size == 0 {
+        return vec![String::new()];
+    }
+
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut count = 0usize;
+    for ch in text.chars() {
+        if count >= chunk_size {
+            out.push(current);
+            current = String::new();
+            count = 0;
+        }
+        current.push(ch);
+        count += 1;
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
 }
 
 fn draw_commit_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
