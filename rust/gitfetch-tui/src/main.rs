@@ -37,6 +37,7 @@ struct FileEntry {
 enum Mode {
     Normal,
     CommitInput,
+    WorktreeCommitPushInput,
     WorktreeCreateInput,
     WorktreeBranchConflictConfirm,
     AgentPopup,
@@ -70,6 +71,8 @@ struct App {
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
     confirm_delete_branch_yes: bool,
+    worktree_commit_input: String,
+    worktree_commit_path: Option<String>,
     agent_sessions: BTreeMap<String, AgentSession>,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
@@ -221,6 +224,8 @@ impl App {
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
             confirm_delete_branch_yes: false,
+            worktree_commit_input: String::new(),
+            worktree_commit_path: None,
             agent_sessions: BTreeMap::new(),
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
@@ -369,6 +374,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                         Mode::CommitInput => {
                             handle_commit_mode_key(&mut app, key.code)?;
+                        }
+                        Mode::WorktreeCommitPushInput => {
+                            handle_worktree_commit_push_mode_key(&mut app, key.code)?;
                         }
                         Mode::WorktreeCreateInput => {
                             handle_worktree_create_mode_key(&mut app, key.code)?;
@@ -521,6 +529,15 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             app.status_line = merge_selected_into_parent(app)?;
             refresh_worktrees(app);
             refresh_status(app);
+        }
+        KeyCode::Char('P') => {
+            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+                app.mode = Mode::WorktreeCommitPushInput;
+                app.worktree_commit_input.clear();
+                app.worktree_commit_path = Some(path);
+                app.status_line =
+                    "Worktree push mode: commit message, Enter to add/commit/push".to_string();
+            }
         }
         KeyCode::Char('u') => {
             app.status_line = update_connected_parent(app)?;
@@ -909,6 +926,49 @@ fn handle_commit_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Er
     Ok(())
 }
 
+fn handle_worktree_commit_push_mode_key(
+    app: &mut App,
+    code: KeyCode,
+) -> Result<(), Box<dyn Error>> {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.worktree_commit_input.clear();
+            app.worktree_commit_path = None;
+            app.status_line = "Worktree commit/push cancelled".to_string();
+        }
+        KeyCode::Enter => {
+            let message = app.worktree_commit_input.trim().to_string();
+            let Some(path) = app.worktree_commit_path.clone() else {
+                app.status_line = "No worktree selected for commit/push".to_string();
+                app.mode = Mode::Normal;
+                return Ok(());
+            };
+
+            if message.is_empty() {
+                app.status_line = "Commit message is empty".to_string();
+            } else {
+                app.status_line = commit_and_push_worktree(path.as_str(), message.as_str())?;
+                refresh_worktrees(app);
+                refresh_status(app);
+            }
+
+            app.mode = Mode::Normal;
+            app.worktree_commit_input.clear();
+            app.worktree_commit_path = None;
+        }
+        KeyCode::Backspace => {
+            app.worktree_commit_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.worktree_commit_input.push(c);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 fn refresh_status(app: &mut App) {
     let output = match run_git(&["status", "--porcelain=1", "-b", "-uall"]) {
         Ok(text) => text,
@@ -932,6 +992,10 @@ fn refresh_status(app: &mut App) {
         let x = line.chars().next().unwrap_or(' ');
         let y = line.chars().nth(1).unwrap_or(' ');
         let path = line[3..].trim().to_string();
+
+        if should_hide_internal_worktree_path(path.as_str()) {
+            continue;
+        }
 
         files.push(FileEntry {
             path,
@@ -1059,12 +1123,93 @@ fn refresh_worktrees(app: &mut App) {
             .then_with(|| a.path.cmp(&b.path))
     });
 
+    reconcile_branch_upstreams(
+        root.as_str(),
+        &entries,
+        current_session_branch(app).as_str(),
+    );
+
     app.worktrees = entries;
     if app.worktrees.is_empty() {
         app.selected_worktree = 0;
     } else if app.selected_worktree >= app.worktrees.len() {
         app.selected_worktree = app.worktrees.len() - 1;
     }
+}
+
+fn reconcile_branch_upstreams(root: &str, entries: &[WorktreeEntry], root_branch: &str) {
+    let parents = worktree_parent_map(entries, root_branch);
+    for (idx, wt) in entries.iter().enumerate() {
+        if wt.detached || wt.branch.is_empty() {
+            continue;
+        }
+        if wt.branch == root_branch {
+            continue;
+        }
+
+        let parent_branch = parents
+            .get(idx)
+            .and_then(|parent_idx| {
+                parent_idx.and_then(|pi| entries.get(pi).map(|e| e.branch.as_str()))
+            })
+            .unwrap_or(root_branch);
+
+        let _ = ensure_branch_upstream(root, wt.branch.as_str(), parent_branch);
+    }
+}
+
+fn ensure_branch_upstream(
+    root: &str,
+    branch: &str,
+    parent_branch: &str,
+) -> Result<(), Box<dyn Error>> {
+    if branch == parent_branch {
+        return Ok(());
+    }
+
+    let has_parent = Command::new("git")
+        .args([
+            "-C",
+            root,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{}", parent_branch),
+        ])
+        .status()?;
+    if !has_parent.success() {
+        return Ok(());
+    }
+
+    let upstream = Command::new("git")
+        .args([
+            "-C",
+            root,
+            "for-each-ref",
+            "--format=%(upstream:short)",
+            &format!("refs/heads/{}", branch),
+        ])
+        .output()?;
+
+    let current = sanitize_for_tui(String::from_utf8_lossy(&upstream.stdout).as_ref())
+        .trim()
+        .to_string();
+    if !current.is_empty() {
+        return Ok(());
+    }
+
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            root,
+            "branch",
+            "--set-upstream-to",
+            parent_branch,
+            branch,
+        ])
+        .output()?;
+
+    Ok(())
 }
 
 fn hydrate_worktree_runtime_state(
@@ -2241,6 +2386,155 @@ fn push_with_upstream() -> Result<String, Box<dyn Error>> {
     }
 }
 
+fn commit_and_push_worktree(path: &str, message: &str) -> Result<String, Box<dyn Error>> {
+    let add = Command::new("git")
+        .args(["-C", path, "add", "."])
+        .output()?;
+    if !add.status.success() {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&add.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&add.stdout).as_ref())
+            .trim()
+            .to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        return Ok(format!(
+            "git add failed in {}: {}",
+            path,
+            single_line(reason.as_str())
+        ));
+    }
+
+    let commit = Command::new("git")
+        .args(["-C", path, "commit", "-m", message])
+        .output()?;
+    let commit_stdout = sanitize_for_tui(String::from_utf8_lossy(&commit.stdout).as_ref())
+        .trim()
+        .to_string();
+    let commit_stderr = sanitize_for_tui(String::from_utf8_lossy(&commit.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    let nothing_to_commit = !commit.status.success()
+        && (commit_stdout.contains("nothing to commit")
+            || commit_stderr.contains("nothing to commit")
+            || commit_stderr.contains("no changes added to commit"));
+
+    if !commit.status.success() && !nothing_to_commit {
+        let reason = if !commit_stderr.is_empty() {
+            commit_stderr
+        } else {
+            commit_stdout
+        };
+        return Ok(format!(
+            "git commit failed in {}: {}",
+            path,
+            single_line(reason.as_str())
+        ));
+    }
+
+    let push = push_with_upstream_at(path)?;
+    if nothing_to_commit {
+        Ok(format!(
+            "No new commit in {}; pushed current HEAD - {}",
+            path,
+            single_line(push.as_str())
+        ))
+    } else {
+        let commit_line = if !commit_stdout.is_empty() {
+            single_line(commit_stdout.as_str())
+        } else if !commit_stderr.is_empty() {
+            single_line(commit_stderr.as_str())
+        } else {
+            "commit ok".to_string()
+        };
+        Ok(format!(
+            "Committed+Pushed in {} - {} | {}",
+            path,
+            commit_line,
+            single_line(push.as_str())
+        ))
+    }
+}
+
+fn push_with_upstream_at(path: &str) -> Result<String, Box<dyn Error>> {
+    let first = Command::new("git").args(["-C", path, "push"]).output()?;
+    let first_stdout = sanitize_for_tui(String::from_utf8_lossy(&first.stdout).as_ref())
+        .trim()
+        .to_string();
+    let first_stderr = sanitize_for_tui(String::from_utf8_lossy(&first.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    if first.status.success() {
+        return Ok(if first_stdout.is_empty() {
+            "✓ git push".to_string()
+        } else {
+            first_stdout
+        });
+    }
+
+    let error_text = if !first_stderr.is_empty() {
+        first_stderr.clone()
+    } else {
+        first_stdout.clone()
+    };
+    let needs_upstream = error_text.contains("has no upstream branch")
+        || error_text.contains("--set-upstream")
+        || error_text.contains("set upstream");
+
+    if !needs_upstream {
+        return Ok(if error_text.is_empty() {
+            "git push failed".to_string()
+        } else {
+            error_text
+        });
+    }
+
+    let remote = preferred_remote_at(path)?;
+    let second = Command::new("git")
+        .args(["-C", path, "push", "-u", remote.as_str(), "HEAD"])
+        .output()?;
+    let second_stdout = sanitize_for_tui(String::from_utf8_lossy(&second.stdout).as_ref())
+        .trim()
+        .to_string();
+    let second_stderr = sanitize_for_tui(String::from_utf8_lossy(&second.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    if second.status.success() {
+        Ok(if second_stdout.is_empty() {
+            format!("✓ git push -u {} HEAD", remote)
+        } else {
+            format!("Set upstream to {} and pushed\n{}", remote, second_stdout)
+        })
+    } else if !second_stderr.is_empty() {
+        Ok(second_stderr)
+    } else if !second_stdout.is_empty() {
+        Ok(second_stdout)
+    } else {
+        Ok(format!("git push -u {} HEAD failed", remote))
+    }
+}
+
+fn preferred_remote_at(path: &str) -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git").args(["-C", path, "remote"]).output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let remotes: Vec<&str> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    if remotes.iter().any(|name| *name == "origin") {
+        Ok("origin".to_string())
+    } else if let Some(first) = remotes.first() {
+        Ok((*first).to_string())
+    } else {
+        Ok("origin".to_string())
+    }
+}
+
 fn preferred_remote() -> Result<String, Box<dyn Error>> {
     let output = Command::new("git").args(["remote"]).output()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2312,6 +2606,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     if matches!(app.mode, Mode::CommitInput) {
         draw_commit_modal(frame, app);
+    }
+
+    if matches!(app.mode, Mode::WorktreeCommitPushInput) {
+        draw_worktree_commit_push_modal(frame, app);
     }
 
     if matches!(app.mode, Mode::WorktreeCreateInput) {
@@ -3319,6 +3617,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" update parent"),
         ]),
         Line::from(vec![
+            Span::styled("P", Style::default().fg(Color::LightMagenta)),
+            Span::raw(" add+commit+push"),
+        ]),
+        Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
@@ -3404,6 +3706,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- u: fetch+pull connected parent node before merge"),
+            Line::from("- P: selected worktree add+commit+push with message popup"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- h: close this help"),
         ],
@@ -4037,6 +4340,14 @@ fn overview_line_count(info: Option<&FileOverview>) -> usize {
     count
 }
 
+fn should_hide_internal_worktree_path(path: &str) -> bool {
+    if !path.starts_with(".gitfetch-worktrees/") {
+        return false;
+    }
+
+    path != ".gitfetch-worktrees/.parent-hints"
+}
+
 fn truncate_text(text: &str, max_chars: usize) -> String {
     if max_chars == 0 {
         return String::new();
@@ -4200,6 +4511,63 @@ fn draw_commit_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Gray)),
         layout[2],
+    );
+}
+
+fn draw_worktree_commit_push_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(74, 26, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Worktree Commit+Push")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let path = app
+        .worktree_commit_path
+        .as_deref()
+        .map(|p| truncate_text(p, 62))
+        .unwrap_or_else(|| "(no selected worktree)".to_string());
+
+    frame.render_widget(
+        Paragraph::new(format!("Target: {}", path))
+            .alignment(Alignment::Left)
+            .style(Style::default().fg(Color::Gray)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Enter message, then Enter runs: git add . -> git commit -m -> git push")
+            .alignment(Alignment::Left)
+            .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.worktree_commit_input.as_str())
+            .block(Block::default().title("Message").borders(Borders::ALL))
+            .style(Style::default().fg(Color::Cyan)),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Esc cancels")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
     );
 }
 
