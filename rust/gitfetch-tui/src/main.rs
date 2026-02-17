@@ -1324,6 +1324,13 @@ fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
         return Ok("Parent node is detached; cannot pull updates".to_string());
     }
 
+    if parent.dirty {
+        return Ok(format!(
+            "Parent '{}' is dirty; commit/stash there before pull",
+            parent.branch
+        ));
+    }
+
     let fetch = run_git(&["-C", parent.path.as_str(), "fetch", "--all", "--prune"])?;
     let pull = run_git(&["-C", parent.path.as_str(), "pull", "--ff-only"])?;
 
