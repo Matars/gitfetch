@@ -2266,8 +2266,10 @@ fn sanitize_for_tui(input: &str) -> String {
             }
         }
 
-        if ch == '\n' || ch == '\t' || (ch >= ' ' && ch != '\u{7f}') {
+        if ch == '\n' || (ch >= ' ' && ch != '\u{7f}') {
             out.push(ch);
+        } else if ch == '\t' {
+            out.push_str("    ");
         }
     }
 
@@ -2575,9 +2577,24 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
 }
 
 fn draw_files_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    frame.render_widget(Clear, area);
+
     let content_width = area.width.saturating_sub(6) as usize;
     let mut items: Vec<ListItem<'_>> = Vec::new();
     let mut index_map: Vec<Option<usize>> = Vec::new();
+    let count_width = app
+        .tree_items
+        .iter()
+        .map(|item| {
+            item.added_lines
+                .max(item.removed_lines)
+                .to_string()
+                .chars()
+                .count()
+        })
+        .max()
+        .unwrap_or(1)
+        .max(4);
 
     let unstaged_indices: Vec<usize> = app
         .tree_items
@@ -2614,6 +2631,7 @@ fn draw_files_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
                 idx,
                 &app.tree_items[idx],
                 content_width,
+                count_width,
             );
         }
     }
@@ -2636,6 +2654,7 @@ fn draw_files_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
                 idx,
                 &app.tree_items[idx],
                 content_width,
+                count_width,
             );
         }
     }
@@ -2696,6 +2715,7 @@ fn push_tree_row(
     idx: usize,
     item: &TreeItem,
     content_width: usize,
+    count_width: usize,
 ) {
     let mut spans: Vec<Span<'_>> = Vec::new();
     let name_color = if item.kind == TreeKind::Folder {
@@ -2704,8 +2724,8 @@ fn push_tree_row(
         Color::LightCyan
     };
 
-    let plus_text = format!("+{:>4}", item.added_lines);
-    let minus_text = format!("-{:>4}", item.removed_lines);
+    let plus_text = format!("+{:>width$}", item.added_lines, width = count_width);
+    let minus_text = format!("-{:>width$}", item.removed_lines, width = count_width);
     let right_len = plus_text.chars().count() + 1 + minus_text.chars().count();
     let label_col = content_width.saturating_sub(right_len).max(8);
     let label = truncate_text(item.label.as_str(), label_col);
@@ -2722,6 +2742,8 @@ fn push_tree_row(
 }
 
 fn draw_selected_overview_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
+    frame.render_widget(Clear, area);
+
     let info = app.selected_overview.as_ref();
 
     let mut lines: Vec<Line<'_>> = Vec::new();
