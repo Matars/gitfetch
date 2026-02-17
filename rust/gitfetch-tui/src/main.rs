@@ -1177,10 +1177,6 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
     if parent.branch == selected.branch {
         return Ok("Selected and parent are the same branch; nothing to merge".to_string());
     }
-    if parent.dirty {
-        return Ok("Parent worktree is dirty; clean or commit before merge".to_string());
-    }
-
     let output = run_git(&[
         "-C",
         parent.path.as_str(),
@@ -1189,8 +1185,15 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
         selected.branch.as_str(),
     ])?;
 
+    let prefix = if parent.dirty {
+        "Parent had local changes; attempted merge"
+    } else {
+        "Merged"
+    };
+
     Ok(format!(
-        "Merged '{}' into parent '{}' ({}) - {}",
+        "{} '{}' into parent '{}' ({}) - {}",
+        prefix,
         selected.branch,
         parent.branch,
         parent.path,
