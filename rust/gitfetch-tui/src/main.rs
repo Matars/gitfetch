@@ -1182,21 +1182,72 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
     if parent.branch == selected.branch {
         return Ok("Selected and parent are the same branch; nothing to merge".to_string());
     }
-    let output = run_git(&[
-        "-C",
-        parent.path.as_str(),
-        "merge",
-        "--no-edit",
-        selected.branch.as_str(),
-    ])?;
 
-    Ok(format!(
-        "Merged '{}' into parent '{}' ({}) - {}",
-        selected.branch,
-        parent.branch,
-        parent.path,
-        single_line(output.as_str())
-    ))
+    let before_head = git_output(&["-C", parent.path.as_str(), "rev-parse", "HEAD"])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let merge = Command::new("git")
+        .args([
+            "-C",
+            parent.path.as_str(),
+            "merge",
+            "--no-edit",
+            selected.branch.as_str(),
+        ])
+        .output()?;
+
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&merge.stdout).as_ref())
+        .trim()
+        .to_string();
+    let stderr = sanitize_for_tui(String::from_utf8_lossy(&merge.stderr).as_ref())
+        .trim()
+        .to_string();
+
+    if !merge.status.success() {
+        let reason = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "merge failed".to_string()
+        };
+        return Ok(format!(
+            "Merge '{}' -> '{}' failed: {}",
+            selected.branch,
+            parent.branch,
+            single_line(reason.as_str())
+        ));
+    }
+
+    let after_head = git_output(&["-C", parent.path.as_str(), "rev-parse", "HEAD"])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let details = if !stdout.is_empty() {
+        single_line(stdout.as_str())
+    } else if !stderr.is_empty() {
+        single_line(stderr.as_str())
+    } else {
+        "ok".to_string()
+    };
+
+    if !before_head.is_empty() && before_head == after_head {
+        Ok(format!(
+            "No new merge for '{}' -> '{}' ({}) - {}",
+            selected.branch, parent.branch, parent.path, details
+        ))
+    } else {
+        Ok(format!(
+            "Merged '{}' into '{}' ({}) [{} -> {}] - {}",
+            selected.branch,
+            parent.branch,
+            parent.path,
+            truncate_text(before_head.as_str(), 8),
+            truncate_text(after_head.as_str(), 8),
+            details
+        ))
+    }
 }
 
 fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
