@@ -450,6 +450,10 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             app.status_line = output;
             refresh_status(app);
         }
+        KeyCode::Char('s') => {
+            stash_selected(app)?;
+            refresh_status(app);
+        }
         _ => {}
     }
 
@@ -1631,6 +1635,23 @@ fn toggle_stage(app: &mut App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn stash_selected(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let path = match app.selected_item() {
+        Some(entry) => entry.path.clone(),
+        None => {
+            app.status_line = "No item selected".to_string();
+            return Ok(());
+        }
+    };
+
+    app.status_line = run_git(&["stash", "push", "-m", &format!("stash: {}", path), "--", &path])?;
+    if app.status_line.is_empty() {
+        app.status_line = format!("Stashed: {}", path);
+    }
+
+    Ok(())
+}
+
 fn refresh_selected_overview(app: &mut App) {
     let item = match app.selected_item() {
         Some(entry) => entry,
@@ -2619,6 +2640,10 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
             Span::raw(" push"),
+        ]),
+        Line::from(vec![
+            Span::styled("s", Style::default().fg(Color::LightMagenta)),
+            Span::raw(" stash selected"),
         ]),
         Line::from(vec![
             Span::styled("r", Style::default().fg(Color::Cyan)),
