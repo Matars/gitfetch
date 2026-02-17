@@ -483,6 +483,14 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
             app.status_line = output;
             refresh_status(app);
         }
+        KeyCode::Char('s') => {
+            app.status_line = run_git(&["stash", "push", "--include-untracked"])?;
+            refresh_status(app);
+        }
+        KeyCode::Char('S') => {
+            app.status_line = run_git(&["stash", "pop"])?;
+            refresh_status(app);
+        }
         _ => {}
     }
 
@@ -3044,6 +3052,14 @@ fn draw_changes_actions_panel(frame: &mut ratatui::Frame<'_>, area: Rect) {
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
             Span::raw(" push"),
+        ]),
+        Line::from(vec![
+            Span::styled("s", Style::default().fg(Color::LightYellow)),
+            Span::raw(" stash changes"),
+        ]),
+        Line::from(vec![
+            Span::styled("S", Style::default().fg(Color::Yellow)),
+            Span::raw(" stash pop"),
         ]),
         Line::from(vec![
             Span::styled("r", Style::default().fg(Color::Cyan)),
