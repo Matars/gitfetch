@@ -72,8 +72,15 @@ struct App {
     confirm_delete_branch_yes: bool,
     agent_sessions: BTreeMap<String, AgentSession>,
     agent_popup_path: Option<String>,
+    terminal_popup_mode: TerminalPopupMode,
     agent_tx: Sender<AgentEvent>,
     agent_rx: Receiver<AgentEvent>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TerminalPopupMode {
+    Input,
+    Control,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,6 +223,7 @@ impl App {
             confirm_delete_branch_yes: false,
             agent_sessions: BTreeMap::new(),
             agent_popup_path: None,
+            terminal_popup_mode: TerminalPopupMode::Input,
             agent_tx,
             agent_rx,
         }
@@ -509,6 +517,11 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             refresh_worktrees(app);
             refresh_status(app);
         }
+        KeyCode::Char('m') => {
+            app.status_line = merge_selected_into_parent(app)?;
+            refresh_worktrees(app);
+            refresh_status(app);
+        }
         _ => {}
     }
 
@@ -519,6 +532,7 @@ fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dy
     if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
         app.agent_popup_path = Some(path.clone());
         app.mode = Mode::AgentPopup;
+        app.terminal_popup_mode = TerminalPopupMode::Input;
         if !has_live_terminal_session(app, path.as_str()) {
             launch_shell_session(app, path.as_str())?;
         } else {
@@ -626,23 +640,41 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         launch_shell_session(app, path.as_str())?;
     }
 
+    if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(code, KeyCode::Char('g')) {
+        app.terminal_popup_mode = match app.terminal_popup_mode {
+            TerminalPopupMode::Input => TerminalPopupMode::Control,
+            TerminalPopupMode::Control => TerminalPopupMode::Input,
+        };
+        return Ok(());
+    }
+
+    if app.terminal_popup_mode == TerminalPopupMode::Control {
+        match code {
+            KeyCode::Esc => {
+                app.mode = Mode::Normal;
+                app.agent_popup_path = None;
+                app.status_line = "Terminal session moved to background".to_string();
+            }
+            KeyCode::Char('q') => {
+                terminate_terminal_session(app, path.as_str());
+                app.mode = Mode::Normal;
+                app.agent_popup_path = None;
+                app.status_line = "Terminal session closed".to_string();
+            }
+            KeyCode::Char('r') => {
+                app.agent_sessions.remove(path.as_str());
+                launch_shell_session(app, path.as_str())?;
+                app.status_line = "Terminal restarted".to_string();
+            }
+            KeyCode::Char('i') => {
+                app.terminal_popup_mode = TerminalPopupMode::Input;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
     match code {
-        KeyCode::Esc => {
-            app.mode = Mode::Normal;
-            app.agent_popup_path = None;
-            app.status_line = "Terminal session moved to background".to_string();
-        }
-        KeyCode::Char('q') => {
-            terminate_terminal_session(app, path.as_str());
-            app.mode = Mode::Normal;
-            app.agent_popup_path = None;
-            app.status_line = "Terminal session closed".to_string();
-        }
-        KeyCode::Char('r') => {
-            app.agent_sessions.remove(path.as_str());
-            launch_shell_session(app, path.as_str())?;
-            app.status_line = "Terminal restarted".to_string();
-        }
         KeyCode::Tab => {
             write_to_agent(app, path.as_str(), "\t")?;
         }
@@ -681,14 +713,7 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                let ctrl = match c {
-                    'c' | 'C' => Some("\x03"),
-                    'd' | 'D' => Some("\x04"),
-                    'z' | 'Z' => Some("\x1A"),
-                    'l' | 'L' => Some("\x0C"),
-                    _ => None,
-                };
-                if let Some(seq) = ctrl {
+                if let Some(seq) = control_seq(c) {
                     write_to_agent(app, path.as_str(), seq)?;
                 }
             } else {
@@ -708,6 +733,38 @@ fn terminate_terminal_session(app: &mut App, path: &str) {
         if let Some(mut child) = session.child.take() {
             let _ = child.kill();
         }
+    }
+}
+
+fn control_seq(c: char) -> Option<&'static str> {
+    match c.to_ascii_lowercase() {
+        'a' => Some("\x01"),
+        'b' => Some("\x02"),
+        'c' => Some("\x03"),
+        'd' => Some("\x04"),
+        'e' => Some("\x05"),
+        'f' => Some("\x06"),
+        'g' => Some("\x07"),
+        'h' => Some("\x08"),
+        'i' => Some("\x09"),
+        'j' => Some("\x0A"),
+        'k' => Some("\x0B"),
+        'l' => Some("\x0C"),
+        'm' => Some("\x0D"),
+        'n' => Some("\x0E"),
+        'o' => Some("\x0F"),
+        'p' => Some("\x10"),
+        'q' => Some("\x11"),
+        'r' => Some("\x12"),
+        's' => Some("\x13"),
+        't' => Some("\x14"),
+        'u' => Some("\x15"),
+        'v' => Some("\x16"),
+        'w' => Some("\x17"),
+        'x' => Some("\x18"),
+        'y' => Some("\x19"),
+        'z' => Some("\x1A"),
+        _ => None,
     }
 }
 
@@ -1097,6 +1154,71 @@ fn remove_selected_worktree(app: &App) -> Result<String, Box<dyn Error>> {
     }
 
     run_git(&["worktree", "remove", selected.path.as_str()])
+}
+
+fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
+    if app.selected_worktree >= app.worktrees.len() {
+        return Ok("No worktree selected".to_string());
+    }
+
+    let selected = app.worktrees[app.selected_worktree].clone();
+    if selected.detached || selected.branch.is_empty() {
+        return Ok("Selected worktree is detached; merge requires a branch".to_string());
+    }
+
+    let Some(parent_idx) = connected_parent_index(app) else {
+        return Ok("No connected parent node found for selected worktree".to_string());
+    };
+    let parent = app.worktrees[parent_idx].clone();
+
+    if parent.detached || parent.branch.is_empty() {
+        return Ok("Parent node is detached; cannot merge into detached HEAD".to_string());
+    }
+    if parent.branch == selected.branch {
+        return Ok("Selected and parent are the same branch; nothing to merge".to_string());
+    }
+    if parent.dirty {
+        return Ok("Parent worktree is dirty; clean or commit before merge".to_string());
+    }
+
+    let output = run_git(&[
+        "-C",
+        parent.path.as_str(),
+        "merge",
+        "--no-edit",
+        selected.branch.as_str(),
+    ])?;
+
+    Ok(format!(
+        "Merged '{}' into parent '{}' ({}) - {}",
+        selected.branch,
+        parent.branch,
+        parent.path,
+        single_line(output.as_str())
+    ))
+}
+
+fn connected_parent_index(app: &App) -> Option<usize> {
+    if app.selected_worktree >= app.worktrees.len() {
+        return None;
+    }
+
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    if let Some(parent_idx) = parents.get(app.selected_worktree).and_then(|v| *v) {
+        return Some(parent_idx);
+    }
+
+    app.worktrees.iter().enumerate().find_map(|(idx, wt)| {
+        if idx == app.selected_worktree {
+            return None;
+        }
+        if !wt.detached && wt.branch == root_branch {
+            Some(idx)
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -2065,6 +2187,7 @@ fn preferred_remote() -> Result<String, Box<dyn Error>> {
 }
 
 fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
+    frame.render_widget(Clear, frame.area());
     frame.render_widget(
         Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
         frame.area(),
@@ -2535,6 +2658,11 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    frame.render_widget(Clear, inner);
+    frame.render_widget(
+        Paragraph::new("").style(Style::default().bg(Color::Black)),
+        inner,
+    );
 
     let root_branch = current_session_branch(app);
     let main_label = canvas_root_label(app, root_branch.as_str());
@@ -3076,6 +3204,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" delete selected"),
         ]),
         Line::from(vec![
+            Span::styled("m", Style::default().fg(Color::LightGreen)),
+            Span::raw(" merge to parent"),
+        ]),
+        Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
@@ -3155,9 +3287,11 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- a: create worktree from branch name"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
+            Line::from("- terminal popup: Ctrl+G toggles INPUT/CONTROL shortcuts"),
             Line::from("- f: fetch selected worktree"),
             Line::from("- p: pull selected worktree"),
             Line::from("- d: delete selected worktree (safe checks)"),
+            Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- h: close this help"),
         ],
@@ -3258,6 +3392,12 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
             Span::styled("terminal: ", Style::default().fg(Color::Gray)),
             Span::styled("shell", Style::default().fg(Color::LightCyan)),
             Span::raw("   "),
+            Span::styled("mode: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                terminal_popup_mode_text(app.terminal_popup_mode),
+                terminal_popup_mode_style(app.terminal_popup_mode),
+            ),
+            Span::raw("   "),
             Span::styled("status: ", Style::default().fg(Color::Gray)),
             Span::styled(agent_state_text(state), agent_state_style(state)),
         ])),
@@ -3281,10 +3421,35 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         layout[2],
     );
     frame.render_widget(
-        Paragraph::new("Typing sends input. Esc puts session in background. q quits session.")
+        Paragraph::new(terminal_footer_text(app.terminal_popup_mode))
             .style(Style::default().fg(Color::Gray)),
         layout[3],
     );
+}
+
+fn terminal_popup_mode_text(mode: TerminalPopupMode) -> &'static str {
+    match mode {
+        TerminalPopupMode::Input => "INPUT",
+        TerminalPopupMode::Control => "CONTROL",
+    }
+}
+
+fn terminal_popup_mode_style(mode: TerminalPopupMode) -> Style {
+    match mode {
+        TerminalPopupMode::Input => Style::default().fg(Color::LightGreen),
+        TerminalPopupMode::Control => Style::default().fg(Color::LightYellow),
+    }
+}
+
+fn terminal_footer_text(mode: TerminalPopupMode) -> &'static str {
+    match mode {
+        TerminalPopupMode::Input => {
+            "INPUT mode: typing goes to terminal. Ctrl+G switches to CONTROL mode."
+        }
+        TerminalPopupMode::Control => {
+            "CONTROL mode: Esc background, q quit session, r restart, i return INPUT."
+        }
+    }
 }
 
 fn agent_state_for_path(app: &App, path: &str) -> AgentState {
