@@ -2924,6 +2924,40 @@ fn worktree_parent_map(worktrees: &[WorktreeEntry], root_branch: &str) -> Vec<Op
         }
     }
 
+    let root_idx = worktrees
+        .iter()
+        .enumerate()
+        .find_map(|(idx, wt)| {
+            if !wt.detached && wt.branch == root_branch && wt.is_current {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            worktrees.iter().enumerate().find_map(|(idx, wt)| {
+                if !wt.detached && wt.branch == root_branch {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+        });
+
+    if let Some(root_idx) = root_idx {
+        for (idx, wt) in worktrees.iter().enumerate() {
+            if idx == root_idx {
+                continue;
+            }
+            if wt.detached {
+                continue;
+            }
+            if parents[idx].is_none() {
+                parents[idx] = Some(root_idx);
+            }
+        }
+    }
+
     parents
 }
 
