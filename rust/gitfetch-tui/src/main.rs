@@ -17,7 +17,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -87,8 +87,10 @@ enum AgentState {
 struct AgentSession {
     state: AgentState,
     parser: vt100::Parser,
+    master: Option<Box<dyn MasterPty + Send>>,
     writer: Option<Box<dyn Write + Send>>,
     child: Option<Box<dyn portable_pty::Child + Send>>,
+    last_size: (u16, u16),
 }
 
 enum AgentEvent {
@@ -331,6 +333,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     while !should_quit {
         drain_agent_events(&mut app);
         refresh_agent_sessions(&mut app);
+
+        // Resize terminal session to match actual popup dimensions
+        if matches!(app.mode, Mode::AgentPopup) {
+            if let Some(path) = app.agent_popup_path.clone() {
+                let size = terminal.size()?;
+                let frame_area = Rect::new(0, 0, size.width, size.height);
+                let (rows, cols) = calc_terminal_popup_size(frame_area);
+                resize_terminal_session(&mut app, &path, rows, cols);
+            }
+        }
+
         terminal.draw(|frame| draw_ui(frame, &app))?;
 
         let ui_tick_rate = if matches!(app.mode, Mode::AgentPopup) {
@@ -739,6 +752,7 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
 
     let tx = app.agent_tx.clone();
     let mut reader = pair.master.try_clone_reader()?;
+    let writer = pair.master.take_writer()?;
     let output_path = path.to_string();
     thread::spawn(move || {
         let mut buf = [0u8; 1024];
@@ -759,8 +773,10 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
     let session = AgentSession {
         state: AgentState::Launching,
         parser: vt100::Parser::new(TERM_ROWS, TERM_COLS, 2000),
-        writer: Some(pair.master.take_writer()?),
+        master: Some(pair.master),
+        writer: Some(writer),
         child: Some(child),
+        last_size: (TERM_ROWS, TERM_COLS),
     };
 
     app.agent_sessions.insert(path.to_string(), session);
@@ -771,6 +787,46 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
     }
     app.status_line = format!("Shell started in popup for {}", path);
     Ok(())
+}
+
+fn resize_terminal_session(app: &mut App, path: &str, rows: u16, cols: u16) {
+    if let Some(session) = app.agent_sessions.get_mut(path) {
+        // Only resize if size actually changed
+        if session.last_size == (rows, cols) {
+            return;
+        }
+        // Resize the PTY
+        if let Some(master) = session.master.as_ref() {
+            let _ = master.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            });
+        }
+        // Resize the vt100 parser to match
+        session.parser.set_size(rows, cols);
+        session.last_size = (rows, cols);
+    }
+}
+
+/// Calculate terminal popup dimensions based on frame size
+fn calc_terminal_popup_size(frame_area: Rect) -> (u16, u16) {
+    let popup = centered_rect(78, 60, frame_area);
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+    // Terminal area is inner[2], minus borders
+    let rows = inner[2].height.saturating_sub(2);
+    let cols = inner[2].width.saturating_sub(2);
+    (rows, cols)
 }
 
 fn write_to_agent(app: &mut App, path: &str, text: &str) -> Result<(), Box<dyn Error>> {
