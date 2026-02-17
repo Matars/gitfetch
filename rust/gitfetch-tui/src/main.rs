@@ -1378,13 +1378,21 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
 
+    // Use an explicit commit/ref target to avoid ambiguous names like "stash"
+    // resolving to refs/stash instead of refs/heads/stash.
+    let merge_target = if !selected.head.is_empty() {
+        selected.head.clone()
+    } else {
+        format!("refs/heads/{}", selected.branch)
+    };
+
     let merge = Command::new("git")
         .args([
             "-C",
             parent.path.as_str(),
             "merge",
             "--no-edit",
-            selected.branch.as_str(),
+            merge_target.as_str(),
         ])
         .output()?;
 
@@ -1404,10 +1412,10 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
             "merge failed".to_string()
         };
         return Ok(format!(
-            "Merge '{}' -> '{}' failed: {}",
+            "Merge '{}' -> '{}' failed:\n{}",
             selected.branch,
             parent.branch,
-            single_line(reason.as_str())
+            sanitize_for_tui(reason.as_str())
         ));
     }
 
@@ -3566,12 +3574,14 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]));
         lines.push(Line::from(""));
         let status_max = area.width.saturating_sub(4) as usize;
-        let status_text = summarize_status_line(app.status_line.as_str());
+        let status_text = sanitize_for_tui(app.status_line.as_str());
+        let inner_height = area.height.saturating_sub(2) as usize;
+        let status_max_lines = inner_height.saturating_sub(lines.len() + 1).max(1);
         lines.push(Line::from(vec![Span::styled(
             "status:",
             Style::default().fg(Color::Gray),
         )]));
-        for wrapped in wrap_text_lines(status_text.as_str(), status_max.max(12), 2) {
+        for wrapped in wrap_text_lines(status_text.as_str(), status_max.max(12), status_max_lines) {
             lines.push(Line::from(vec![Span::styled(
                 wrapped,
                 Style::default().fg(Color::White),
@@ -4480,26 +4490,6 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
 
 fn single_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_string()
-}
-
-fn summarize_status_line(text: &str) -> String {
-    let cleaned = sanitize_for_tui(text);
-    for line in cleaned.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.contains("fatal:") || trimmed.contains("error:") {
-            return trimmed.to_string();
-        }
-    }
-
-    cleaned
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default()
-        .to_string()
 }
 
 fn wrap_text_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<String> {
