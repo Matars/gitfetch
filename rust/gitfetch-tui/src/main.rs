@@ -522,6 +522,11 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             refresh_worktrees(app);
             refresh_status(app);
         }
+        KeyCode::Char('u') => {
+            app.status_line = update_connected_parent(app)?;
+            refresh_worktrees(app);
+            refresh_status(app);
+        }
         _ => {}
     }
 
@@ -1185,19 +1190,33 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
         selected.branch.as_str(),
     ])?;
 
-    let prefix = if parent.dirty {
-        "Parent had local changes; attempted merge"
-    } else {
-        "Merged"
-    };
-
     Ok(format!(
-        "{} '{}' into parent '{}' ({}) - {}",
-        prefix,
+        "Merged '{}' into parent '{}' ({}) - {}",
         selected.branch,
         parent.branch,
         parent.path,
         single_line(output.as_str())
+    ))
+}
+
+fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
+    let Some(parent_idx) = connected_parent_index(app) else {
+        return Ok("No connected parent node found for selected worktree".to_string());
+    };
+    let parent = app.worktrees[parent_idx].clone();
+
+    if parent.detached || parent.branch.is_empty() {
+        return Ok("Parent node is detached; cannot pull updates".to_string());
+    }
+
+    let fetch = run_git(&["-C", parent.path.as_str(), "fetch", "--all", "--prune"])?;
+    let pull = run_git(&["-C", parent.path.as_str(), "pull", "--ff-only"])?;
+
+    Ok(format!(
+        "Updated parent '{}' - {} | {}",
+        parent.branch,
+        single_line(fetch.as_str()),
+        single_line(pull.as_str())
     ))
 }
 
@@ -3245,6 +3264,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" merge to parent"),
         ]),
         Line::from(vec![
+            Span::styled("u", Style::default().fg(Color::Cyan)),
+            Span::raw(" update parent"),
+        ]),
+        Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
@@ -3329,6 +3352,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- p: pull selected worktree"),
             Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- m: merge selected branch into connected parent node"),
+            Line::from("- u: fetch+pull connected parent node before merge"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- h: close this help"),
         ],
