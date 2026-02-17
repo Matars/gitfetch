@@ -1281,8 +1281,25 @@ fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
         ahead = parsed_ahead;
         behind = parsed_behind;
     }
-    let dirty = lines.any(|line| !line.trim().is_empty());
+    let dirty = lines.any(|line| status_line_counts_as_dirty(line));
     (dirty, ahead, behind)
+}
+
+fn status_line_counts_as_dirty(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if let Some(path) = trimmed.strip_prefix("?? ") {
+        return !should_hide_internal_worktree_path(path.trim());
+    }
+
+    if let Some(path) = trimmed.strip_prefix("!! ") {
+        return !should_hide_internal_worktree_path(path.trim());
+    }
+
+    true
 }
 
 fn parse_branch_snapshot(line: &str) -> (String, usize, usize) {

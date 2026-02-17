@@ -20,3 +20,6 @@ venv/
 env/
 .env/
 target/
+
+# local worktree manager state
+.gitfetch-worktrees/
