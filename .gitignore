@@ -12,6 +12,7 @@ __pycache__/
 codeql/
 specs/
 
+prompt.md
 
 # env
 venv/
