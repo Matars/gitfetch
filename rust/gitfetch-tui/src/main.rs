@@ -40,6 +40,7 @@ enum Mode {
     WorktreeCommitPushInput,
     WorktreeCreateInput,
     WorktreeBranchConflictConfirm,
+    QuitWithSessionsConfirm,
     AgentPopup,
 }
 
@@ -73,6 +74,8 @@ struct App {
     confirm_delete_branch_yes: bool,
     worktree_commit_input: String,
     worktree_commit_path: Option<String>,
+    confirm_quit_with_sessions_yes: bool,
+    quit_now: bool,
     agent_sessions: BTreeMap<String, AgentSession>,
     agent_popup_path: Option<String>,
     terminal_popup_mode: TerminalPopupMode,
@@ -228,6 +231,8 @@ impl App {
             confirm_delete_branch_yes: false,
             worktree_commit_input: String::new(),
             worktree_commit_path: None,
+            confirm_quit_with_sessions_yes: false,
+            quit_now: false,
             agent_sessions: BTreeMap::new(),
             agent_popup_path: None,
             terminal_popup_mode: TerminalPopupMode::Input,
@@ -397,9 +402,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
                         }
+                        Mode::QuitWithSessionsConfirm => {
+                            handle_quit_with_sessions_mode_key(&mut app, key.code);
+                        }
                         Mode::AgentPopup => {
                             handle_agent_popup_key(&mut app, key)?;
                         }
+                    }
+
+                    if app.quit_now {
+                        should_quit = true;
                     }
                 }
             }
@@ -426,7 +438,7 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
     }
 
     match code {
-        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {
             app.view_mode = ViewMode::Worktrees;
             app.worktree_focus = WorktreePane::Canvas;
@@ -479,7 +491,7 @@ fn handle_normal_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn 
 
 fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dyn Error>> {
     match code {
-        KeyCode::Char('q') => return Ok(true),
+        KeyCode::Char('q') => return Ok(request_quit(app)),
         KeyCode::Char('w') => {
             app.view_mode = ViewMode::Changes;
             app.show_panel_help = false;
@@ -575,6 +587,48 @@ fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dy
         }
     }
     Ok(())
+}
+
+fn request_quit(app: &mut App) -> bool {
+    if live_terminal_session_count(app) == 0 {
+        return true;
+    }
+
+    app.mode = Mode::QuitWithSessionsConfirm;
+    app.confirm_quit_with_sessions_yes = false;
+    app.status_line = "Active terminal sessions detected".to_string();
+    false
+}
+
+fn live_terminal_session_count(app: &App) -> usize {
+    app.agent_sessions
+        .values()
+        .filter(|session| session.child.is_some())
+        .count()
+}
+
+fn handle_quit_with_sessions_mode_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.confirm_quit_with_sessions_yes = false;
+            app.status_line = "Quit cancelled".to_string();
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Tab => {
+            app.confirm_quit_with_sessions_yes = !app.confirm_quit_with_sessions_yes;
+        }
+        KeyCode::Char('y') => app.confirm_quit_with_sessions_yes = true,
+        KeyCode::Char('n') => app.confirm_quit_with_sessions_yes = false,
+        KeyCode::Enter => {
+            if app.confirm_quit_with_sessions_yes {
+                app.quit_now = true;
+            } else {
+                app.mode = Mode::Normal;
+                app.status_line = "Quit cancelled".to_string();
+            }
+        }
+        _ => {}
+    }
 }
 
 fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
@@ -2571,6 +2625,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::QuitWithSessionsConfirm) {
+        draw_quit_with_sessions_modal(frame, app);
+    }
+
     if app.view_mode == ViewMode::Worktrees && app.show_panel_help {
         draw_worktree_help_modal(frame, app);
     }
@@ -4041,6 +4099,73 @@ fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App)
             Span::styled("[ Yes: delete + recreate ]", yes_style),
             Span::raw("   "),
             Span::styled("[ No: keep branch ]", no_style),
+        ]))
+        .alignment(Alignment::Center),
+        layout[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new("No is selected by default")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn draw_quit_with_sessions_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(68, 26, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Active Sessions")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightRed));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let count = live_terminal_session_count(app);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "You have {} active terminal session(s). Quit anyway?",
+            count
+        ))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new("Choosing Yes will close the TUI and terminate those PTY sessions.")
+            .style(Style::default().fg(Color::Gray)),
+        layout[1],
+    );
+
+    let yes_style = if app.confirm_quit_with_sessions_yes {
+        Style::default().fg(Color::Black).bg(Color::LightRed)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let no_style = if app.confirm_quit_with_sessions_yes {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::LightGreen)
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("[ Yes: quit ]", yes_style),
+            Span::raw("   "),
+            Span::styled("[ No: stay ]", no_style),
         ]))
         .alignment(Alignment::Center),
         layout[2],
