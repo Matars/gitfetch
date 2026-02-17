@@ -7,3 +7,5 @@ description = "Experimental TUI scaffold for gitfetch"
 [dependencies]
 crossterm = "0.29"
 ratatui = "0.29"
+portable-pty = "0.8"
+vt100 = "0.15"

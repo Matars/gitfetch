@@ -1,19 +1,23 @@
 use std::error::Error;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -35,6 +39,7 @@ enum Mode {
     CommitInput,
     WorktreeCreateInput,
     WorktreeBranchConflictConfirm,
+    AgentPopup,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,7 +48,6 @@ enum ViewMode {
     Worktrees,
 }
 
-#[derive(Clone, Debug)]
 struct App {
     branch: String,
     ahead: usize,
@@ -66,6 +70,29 @@ struct App {
     new_worktree_base: WorktreeCreateBase,
     pending_create_branch: String,
     confirm_delete_branch_yes: bool,
+    agent_sessions: BTreeMap<String, AgentSession>,
+    agent_popup_path: Option<String>,
+    agent_tx: Sender<AgentEvent>,
+    agent_rx: Receiver<AgentEvent>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentState {
+    Launching,
+    Running,
+    Done,
+    Failed,
+}
+
+struct AgentSession {
+    state: AgentState,
+    parser: vt100::Parser,
+    writer: Option<Box<dyn Write + Send>>,
+    child: Option<Box<dyn portable_pty::Child + Send>>,
+}
+
+enum AgentEvent {
+    Output { path: String, bytes: Vec<u8> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,6 +191,7 @@ enum DiffPreviewKind {
 
 impl App {
     fn new() -> Self {
+        let (agent_tx, agent_rx) = mpsc::channel();
         Self {
             branch: "unknown".to_string(),
             ahead: 0,
@@ -186,6 +214,10 @@ impl App {
             new_worktree_base: WorktreeCreateBase::Selected,
             pending_create_branch: String::new(),
             confirm_delete_branch_yes: false,
+            agent_sessions: BTreeMap::new(),
+            agent_popup_path: None,
+            agent_tx,
+            agent_rx,
         }
     }
 
@@ -289,18 +321,35 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut app = App::new();
     refresh_status(&mut app);
 
-    let status_tick_rate = Duration::from_millis(900);
+    let ui_tick_rate_fast = Duration::from_millis(16);
+    let ui_tick_rate_normal = Duration::from_millis(33);
+    let status_tick_rate = Duration::from_millis(1200);
+    let mut last_ui_tick = Instant::now();
     let mut last_status_tick = Instant::now();
     let mut should_quit = false;
 
     while !should_quit {
+        drain_agent_events(&mut app);
+        refresh_agent_sessions(&mut app);
         terminal.draw(|frame| draw_ui(frame, &app))?;
 
-        let timeout = status_tick_rate.saturating_sub(last_status_tick.elapsed());
+        let ui_tick_rate = if matches!(app.mode, Mode::AgentPopup) {
+            ui_tick_rate_fast
+        } else {
+            ui_tick_rate_normal
+        };
+        let ui_timeout = ui_tick_rate.saturating_sub(last_ui_tick.elapsed());
+        let status_timeout = status_tick_rate.saturating_sub(last_status_tick.elapsed());
+        let timeout = if ui_timeout < status_timeout {
+            ui_timeout
+        } else {
+            status_timeout
+        };
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                    if !matches!(app.mode, Mode::AgentPopup)
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
                         && key.code == KeyCode::Char('c')
                     {
                         should_quit = true;
@@ -319,12 +368,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
                         }
+                        Mode::AgentPopup => {
+                            handle_agent_popup_key(&mut app, key)?;
+                        }
                     }
                 }
             }
         }
 
-        if last_status_tick.elapsed() >= status_tick_rate {
+        if last_ui_tick.elapsed() >= ui_tick_rate {
+            last_ui_tick = Instant::now();
+        }
+
+        let refresh_git = !matches!(app.mode, Mode::AgentPopup);
+        if refresh_git && last_status_tick.elapsed() >= status_tick_rate {
             refresh_status(&mut app);
             last_status_tick = Instant::now();
         }
@@ -423,6 +480,12 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             app.status_line =
                 "Create worktree: choose base with ←/→, then type branch name".to_string();
         }
+        KeyCode::Char('o') => {
+            open_terminal_popup_for_selected_worktree(app)?;
+        }
+        KeyCode::Char('z') => {
+            open_terminal_popup_for_selected_worktree(app)?;
+        }
         KeyCode::Char('f') => {
             if let Some(selected) = app.selected_worktree() {
                 let output = run_git(&["-C", selected.path.as_str(), "fetch", "--all", "--prune"])?;
@@ -450,6 +513,19 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
     }
 
     Ok(false)
+}
+
+fn open_terminal_popup_for_selected_worktree(app: &mut App) -> Result<(), Box<dyn Error>> {
+    if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+        app.agent_popup_path = Some(path.clone());
+        app.mode = Mode::AgentPopup;
+        if !has_live_terminal_session(app, path.as_str()) {
+            launch_shell_session(app, path.as_str())?;
+        } else {
+            app.status_line = "Reopened terminal session".to_string();
+        }
+    }
+    Ok(())
 }
 
 fn handle_worktree_create_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
@@ -537,6 +613,208 @@ fn handle_branch_conflict_confirm_mode_key(
     }
 
     Ok(())
+}
+
+fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Error>> {
+    let code = key.code;
+    let Some(path) = app.agent_popup_path.clone() else {
+        app.mode = Mode::Normal;
+        return Ok(());
+    };
+
+    if !has_live_terminal_session(app, path.as_str()) {
+        launch_shell_session(app, path.as_str())?;
+    }
+
+    match code {
+        KeyCode::Esc => {
+            app.mode = Mode::Normal;
+            app.agent_popup_path = None;
+            app.status_line = "Terminal session moved to background".to_string();
+        }
+        KeyCode::Char('q') => {
+            terminate_terminal_session(app, path.as_str());
+            app.mode = Mode::Normal;
+            app.agent_popup_path = None;
+            app.status_line = "Terminal session closed".to_string();
+        }
+        KeyCode::Char('r') => {
+            app.agent_sessions.remove(path.as_str());
+            launch_shell_session(app, path.as_str())?;
+            app.status_line = "Terminal restarted".to_string();
+        }
+        KeyCode::Tab => {
+            write_to_agent(app, path.as_str(), "\t")?;
+        }
+        KeyCode::Left => {
+            write_to_agent(app, path.as_str(), "\x1b[D")?;
+        }
+        KeyCode::Right => {
+            write_to_agent(app, path.as_str(), "\x1b[C")?;
+        }
+        KeyCode::Up => {
+            write_to_agent(app, path.as_str(), "\x1b[A")?;
+        }
+        KeyCode::Down => {
+            write_to_agent(app, path.as_str(), "\x1b[B")?;
+        }
+        KeyCode::Home => {
+            write_to_agent(app, path.as_str(), "\x1b[H")?;
+        }
+        KeyCode::End => {
+            write_to_agent(app, path.as_str(), "\x1b[F")?;
+        }
+        KeyCode::PageUp => {
+            write_to_agent(app, path.as_str(), "\x1b[5~")?;
+        }
+        KeyCode::PageDown => {
+            write_to_agent(app, path.as_str(), "\x1b[6~")?;
+        }
+        KeyCode::Delete => {
+            write_to_agent(app, path.as_str(), "\x1b[3~")?;
+        }
+        KeyCode::Backspace => {
+            write_to_agent(app, path.as_str(), "\x7f")?;
+        }
+        KeyCode::Enter => {
+            write_to_agent(app, path.as_str(), "\r")?;
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                let ctrl = match c {
+                    'c' | 'C' => Some("\x03"),
+                    'd' | 'D' => Some("\x04"),
+                    'z' | 'Z' => Some("\x1A"),
+                    'l' | 'L' => Some("\x0C"),
+                    _ => None,
+                };
+                if let Some(seq) = ctrl {
+                    write_to_agent(app, path.as_str(), seq)?;
+                }
+            } else {
+                let mut s = String::new();
+                s.push(c);
+                write_to_agent(app, path.as_str(), s.as_str())?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn terminate_terminal_session(app: &mut App, path: &str) {
+    if let Some(mut session) = app.agent_sessions.remove(path) {
+        if let Some(mut child) = session.child.take() {
+            let _ = child.kill();
+        }
+    }
+}
+
+fn has_live_terminal_session(app: &App, path: &str) -> bool {
+    app.agent_sessions
+        .get(path)
+        .map(|session| session.child.is_some() && session.writer.is_some())
+        .unwrap_or(false)
+}
+
+fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>> {
+    const TERM_ROWS: u16 = 44;
+    const TERM_COLS: u16 = 150;
+
+    let pty_system = native_pty_system();
+    let pair = pty_system.openpty(PtySize {
+        rows: TERM_ROWS,
+        cols: TERM_COLS,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "zsh".to_string());
+    let mut cmd = CommandBuilder::new(shell.as_str());
+    cmd.arg("-i");
+    cmd.arg("-l");
+    cmd.cwd(path);
+    let child = pair.slave.spawn_command(cmd)?;
+
+    let tx = app.agent_tx.clone();
+    let mut reader = pair.master.try_clone_reader()?;
+    let output_path = path.to_string();
+    thread::spawn(move || {
+        let mut buf = [0u8; 1024];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let _ = tx.send(AgentEvent::Output {
+                        path: output_path.clone(),
+                        bytes: buf[..n].to_vec(),
+                    });
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let session = AgentSession {
+        state: AgentState::Launching,
+        parser: vt100::Parser::new(TERM_ROWS, TERM_COLS, 2000),
+        writer: Some(pair.master.take_writer()?),
+        child: Some(child),
+    };
+
+    app.agent_sessions.insert(path.to_string(), session);
+    if let Some(active) = app.agent_sessions.get_mut(path) {
+        active
+            .parser
+            .process(b"[terminal attached - type commands and press Enter]\r\n");
+    }
+    app.status_line = format!("Shell started in popup for {}", path);
+    Ok(())
+}
+
+fn write_to_agent(app: &mut App, path: &str, text: &str) -> Result<(), Box<dyn Error>> {
+    if let Some(session) = app.agent_sessions.get_mut(path) {
+        if let Some(writer) = session.writer.as_mut() {
+            writer.write_all(text.as_bytes())?;
+            writer.flush()?;
+        }
+    }
+    Ok(())
+}
+
+fn drain_agent_events(app: &mut App) {
+    while let Ok(event) = app.agent_rx.try_recv() {
+        match event {
+            AgentEvent::Output { path, bytes } => {
+                if let Some(session) = app.agent_sessions.get_mut(path.as_str()) {
+                    session.state = AgentState::Running;
+                    session.parser.process(bytes.as_slice());
+                }
+            }
+        }
+    }
+}
+
+fn refresh_agent_sessions(app: &mut App) {
+    for session in app.agent_sessions.values_mut() {
+        if let Some(child) = session.child.as_mut() {
+            if let Ok(Some(status)) = child.try_wait() {
+                if status.success() {
+                    session.state = AgentState::Done;
+                    session
+                        .parser
+                        .process(b"\r\n[terminal exited successfully]\r\n");
+                } else {
+                    session.state = AgentState::Failed;
+                    let line = format!("\r\n[terminal exited: {}]\r\n", status);
+                    session.parser.process(line.as_bytes());
+                }
+                session.child = None;
+                session.writer = None;
+            }
+        }
+    }
 }
 
 fn handle_commit_mode_key(app: &mut App, code: KeyCode) -> Result<(), Box<dyn Error>> {
@@ -632,6 +910,8 @@ fn refresh_worktrees(app: &mut App) {
     let current_path = std::env::current_dir()
         .ok()
         .map(|path| normalize_path(path.to_string_lossy().as_ref()));
+    let root = create_root_for_app(app);
+    let parent_hints = load_parent_hint_map(root.as_str());
 
     let mut entries: Vec<WorktreeEntry> = Vec::new();
     let mut current = WorktreeEntry::default();
@@ -640,7 +920,11 @@ fn refresh_worktrees(app: &mut App) {
     for line in output.lines() {
         if line.trim().is_empty() {
             if in_block {
-                hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+                hydrate_worktree_runtime_state(
+                    &mut current,
+                    current_path.as_deref(),
+                    &parent_hints,
+                );
                 entries.push(current.clone());
                 current = WorktreeEntry::default();
                 in_block = false;
@@ -650,7 +934,11 @@ fn refresh_worktrees(app: &mut App) {
 
         if let Some(path) = line.strip_prefix("worktree ") {
             if in_block {
-                hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+                hydrate_worktree_runtime_state(
+                    &mut current,
+                    current_path.as_deref(),
+                    &parent_hints,
+                );
                 entries.push(current.clone());
                 current = WorktreeEntry::default();
             }
@@ -698,7 +986,7 @@ fn refresh_worktrees(app: &mut App) {
     }
 
     if in_block {
-        hydrate_worktree_runtime_state(&mut current, current_path.as_deref());
+        hydrate_worktree_runtime_state(&mut current, current_path.as_deref(), &parent_hints);
         entries.push(current);
     }
 
@@ -717,7 +1005,11 @@ fn refresh_worktrees(app: &mut App) {
     }
 }
 
-fn hydrate_worktree_runtime_state(entry: &mut WorktreeEntry, current_path: Option<&str>) {
+fn hydrate_worktree_runtime_state(
+    entry: &mut WorktreeEntry,
+    current_path: Option<&str>,
+    parent_hints: &BTreeMap<String, String>,
+) {
     let normalized = normalize_path(entry.path.as_str());
     entry.is_current = current_path
         .map(|cwd| cwd == normalized.as_str())
@@ -731,31 +1023,7 @@ fn hydrate_worktree_runtime_state(entry: &mut WorktreeEntry, current_path: Optio
     entry.dirty = dirty;
     entry.ahead = ahead;
     entry.behind = behind;
-    entry.parent_hint = read_worktree_parent_hint(entry.path.as_str());
-}
-
-fn read_worktree_parent_hint(path: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args([
-            "-C",
-            path,
-            "config",
-            "--worktree",
-            "--get",
-            "gitfetch.parent",
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    entry.parent_hint = parent_hints.get(entry.branch.as_str()).cloned();
 }
 
 fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
@@ -763,7 +1031,9 @@ fn worktree_branch_state(path: &str) -> (bool, usize, usize) {
         .args(["-C", path, "status", "--porcelain=1", "-b", "-uall"])
         .output()
     {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        Ok(out) if out.status.success() => {
+            sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref())
+        }
         _ => return (false, 0, 0),
     };
 
@@ -914,8 +1184,12 @@ fn delete_branch_and_create_worktree(
         .args(["-C", root, "branch", "-D", branch])
         .output()?;
     if !delete.status.success() {
-        let stderr = String::from_utf8_lossy(&delete.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&delete.stdout).trim().to_string();
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&delete.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&delete.stdout).as_ref())
+            .trim()
+            .to_string();
         let reason = if !stderr.is_empty() { stderr } else { stdout };
         return Ok(format!("Failed deleting branch '{}': {}", branch, reason));
     }
@@ -949,15 +1223,19 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
             start_point.as_str(),
         ])
         .output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .trim()
+        .to_string();
+    let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+        .trim()
+        .to_string();
 
     if output.status.success() {
         let verified = Command::new("git")
             .args(["-C", root.as_str(), "worktree", "list", "--porcelain"])
             .output()
             .ok()
-            .map(|out| String::from_utf8_lossy(&out.stdout).to_string())
+            .map(|out| sanitize_for_tui(String::from_utf8_lossy(&out.stdout).as_ref()))
             .map(|list| {
                 list.lines()
                     .any(|line| line.trim() == format!("worktree {}", path).as_str())
@@ -995,14 +1273,7 @@ fn create_worktree(app: &App, branch: &str) -> Result<String, Box<dyn Error>> {
             }
         }
 
-        let _ = run_git(&[
-            "-C",
-            path.as_str(),
-            "config",
-            "--worktree",
-            "gitfetch.parent",
-            parent_branch.as_str(),
-        ]);
+        let _ = save_parent_hint(root.as_str(), branch, parent_branch.as_str());
 
         if !verified {
             message.push_str(
@@ -1074,6 +1345,54 @@ fn repo_container_from_path(path: &str) -> Option<String> {
     }
 }
 
+fn parent_hint_map_path(root: &str) -> String {
+    format!("{}/.gitfetch-worktrees/.parent-hints", root)
+}
+
+fn load_parent_hint_map(root: &str) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    let content = match fs::read_to_string(parent_hint_map_path(root)) {
+        Ok(v) => v,
+        Err(_) => return map,
+    };
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((child, parent)) = trimmed.split_once('\t') {
+            let c = child.trim();
+            let p = parent.trim();
+            if !c.is_empty() && !p.is_empty() {
+                map.insert(c.to_string(), p.to_string());
+            }
+        }
+    }
+
+    map
+}
+
+fn save_parent_hint(
+    root: &str,
+    child_branch: &str,
+    parent_branch: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut map = load_parent_hint_map(root);
+    map.insert(child_branch.to_string(), parent_branch.to_string());
+
+    let mut lines = String::new();
+    for (child, parent) in map {
+        lines.push_str(child.as_str());
+        lines.push('\t');
+        lines.push_str(parent.as_str());
+        lines.push('\n');
+    }
+
+    fs::write(parent_hint_map_path(root), lines)?;
+    Ok(())
+}
+
 fn selected_branch_name(app: &App) -> String {
     if let Some(selected) = app.selected_worktree() {
         if !selected.detached && !selected.branch.is_empty() {
@@ -1134,7 +1453,9 @@ fn capture_uncommitted_patch(source_path: &str) -> Result<Option<String>, Box<dy
     if !output.status.success() {
         return Ok(None);
     }
-    Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+    Ok(Some(sanitize_for_tui(
+        String::from_utf8_lossy(&output.stdout).as_ref(),
+    )))
 }
 
 struct CommandResult {
@@ -1157,7 +1478,9 @@ fn run_git_with_input(args: &[&str], input: &[u8]) -> Result<CommandResult, Box<
     let output = child.wait_with_output()?;
     Ok(CommandResult {
         success: output.status.success(),
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        stderr: sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+            .trim()
+            .to_string(),
     })
 }
 
@@ -1586,10 +1909,57 @@ fn is_identifier_like(value: &str) -> bool {
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+fn sanitize_for_tui(input: &str) -> String {
+    let mut out = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            match chars.peek().copied() {
+                Some('[') => {
+                    let _ = chars.next();
+                    while let Some(c) = chars.next() {
+                        if ('@'..='~').contains(&c) {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                Some(']') => {
+                    let _ = chars.next();
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' {
+                            break;
+                        }
+                        if c == '\u{1b}' {
+                            if let Some('\\') = chars.peek().copied() {
+                                let _ = chars.next();
+                                break;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                _ => continue,
+            }
+        }
+
+        if ch == '\n' || ch == '\t' || (ch >= ' ' && ch != '\u{7f}') {
+            out.push(ch);
+        }
+    }
+
+    out
+}
+
 fn run_git(args: &[&str]) -> Result<String, Box<dyn Error>> {
     let output = Command::new("git").args(args).output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .trim()
+        .to_string();
+    let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+        .trim()
+        .to_string();
 
     if output.status.success() {
         if stdout.is_empty() {
@@ -1609,13 +1979,19 @@ fn git_output(args: &[&str]) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    Some(String::from_utf8_lossy(&output.stdout).to_string())
+    Some(sanitize_for_tui(
+        String::from_utf8_lossy(&output.stdout).as_ref(),
+    ))
 }
 
 fn push_with_upstream() -> Result<String, Box<dyn Error>> {
     let first = Command::new("git").args(["push"]).output()?;
-    let first_stdout = String::from_utf8_lossy(&first.stdout).trim().to_string();
-    let first_stderr = String::from_utf8_lossy(&first.stderr).trim().to_string();
+    let first_stdout = sanitize_for_tui(String::from_utf8_lossy(&first.stdout).as_ref())
+        .trim()
+        .to_string();
+    let first_stderr = sanitize_for_tui(String::from_utf8_lossy(&first.stderr).as_ref())
+        .trim()
+        .to_string();
 
     if first.status.success() {
         if first_stdout.is_empty() {
@@ -1645,8 +2021,12 @@ fn push_with_upstream() -> Result<String, Box<dyn Error>> {
     let second = Command::new("git")
         .args(["push", "-u", remote.as_str(), "HEAD"])
         .output()?;
-    let second_stdout = String::from_utf8_lossy(&second.stdout).trim().to_string();
-    let second_stderr = String::from_utf8_lossy(&second.stderr).trim().to_string();
+    let second_stdout = sanitize_for_tui(String::from_utf8_lossy(&second.stdout).as_ref())
+        .trim()
+        .to_string();
+    let second_stderr = sanitize_for_tui(String::from_utf8_lossy(&second.stderr).as_ref())
+        .trim()
+        .to_string();
 
     if second.status.success() {
         if second_stdout.is_empty() {
@@ -1689,6 +2069,11 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
         frame.area(),
     );
+
+    if matches!(app.mode, Mode::AgentPopup) {
+        draw_agent_popup(frame, app);
+        return;
+    }
 
     if app.view_mode == ViewMode::Changes {
         let columns = Layout::default()
@@ -2152,7 +2537,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     frame.render_widget(block, area);
 
     let root_branch = current_session_branch(app);
-    let main_label = format!("[current: {}]", truncate_text(root_branch.as_str(), 18));
+    let main_label = canvas_root_label(app, root_branch.as_str());
     let main_anchor_x = inner.x.saturating_add(inner.width / 2);
     let main_anchor_y = inner.y.saturating_add(1);
     let main_x = main_anchor_x.saturating_sub((main_label.chars().count() as u16) / 2);
@@ -2190,7 +2575,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
 
     for (idx, entry) in app.worktrees.iter().enumerate() {
         let selected = idx == app.selected_worktree;
-        let label = canvas_node_label(entry, selected);
+        let label = canvas_node_label(app, entry, selected);
         let (anchor_x, anchor_y) = positions[idx];
         let label_width = label.chars().count() as u16;
         let mut x = anchor_x.saturating_sub(label_width / 2);
@@ -2220,7 +2605,20 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     }
 }
 
-fn canvas_node_label(entry: &WorktreeEntry, selected: bool) -> String {
+fn canvas_root_label(app: &App, root_branch: &str) -> String {
+    let current_node_matches_root = app
+        .worktrees
+        .iter()
+        .any(|wt| wt.is_current && wt.branch == root_branch);
+
+    if current_node_matches_root {
+        "[current]".to_string()
+    } else {
+        format!("[current: {}]", truncate_text(root_branch, 18))
+    }
+}
+
+fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
     let mut name = if entry.detached {
         "detached".to_string()
     } else {
@@ -2231,11 +2629,38 @@ fn canvas_node_label(entry: &WorktreeEntry, selected: bool) -> String {
     }
 
     let state = if entry.dirty { "dirty" } else { "clean" };
+    let agent = agent_badge_for_node(app, entry.path.as_str());
     if selected {
-        format!("[{name} | {state}]")
+        format!("[{name} | {state}{agent}]")
     } else {
-        format!("({name} | {state})")
+        format!("({name} | {state}{agent})")
     }
+}
+
+fn agent_badge_for_node(app: &App, path: &str) -> String {
+    let Some(session) = app.agent_sessions.get(path) else {
+        return String::new();
+    };
+
+    let in_foreground = matches!(app.mode, Mode::AgentPopup)
+        && app
+            .agent_popup_path
+            .as_deref()
+            .map(|p| p == path)
+            .unwrap_or(false);
+
+    let marker = match session.state {
+        AgentState::Launching | AgentState::Running => {
+            if in_foreground {
+                " ...fg"
+            } else {
+                " ...bg"
+            }
+        }
+        AgentState::Done => " ✓",
+        AgentState::Failed => " !",
+    };
+    marker.to_string()
 }
 
 fn render_positions(area: Rect, parents: &[Option<usize>]) -> Vec<(u16, u16)> {
@@ -2276,7 +2701,7 @@ fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
         }
     }
 
-    for _ in 0..100 {
+    for _ in 0..24 {
         let mut forces = vec![(0.0f32, 0.0f32); count];
 
         for i in 0..count {
@@ -2631,6 +3056,14 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" create worktree"),
         ]),
         Line::from(vec![
+            Span::styled("o", Style::default().fg(Color::LightBlue)),
+            Span::raw(" open terminal popup"),
+        ]),
+        Line::from(vec![
+            Span::styled("z", Style::default().fg(Color::LightBlue)),
+            Span::raw(" open terminal popup"),
+        ]),
+        Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
             Span::raw(" fetch selected"),
         ]),
@@ -2640,7 +3073,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("d", Style::default().fg(Color::LightRed)),
-            Span::raw(" remove selected"),
+            Span::raw(" delete selected"),
         ]),
         Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
@@ -2720,9 +3153,11 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
+            Line::from("- o: open/reopen terminal popup for selected node"),
+            Line::from("- z: same as o (open/reopen terminal popup)"),
             Line::from("- f: fetch selected worktree"),
             Line::from("- p: pull selected worktree"),
-            Line::from("- d: remove selected worktree (safe checks)"),
+            Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- h: close this help"),
         ],
@@ -2786,6 +3221,220 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
             .style(Style::default().fg(Color::Gray)),
         layout[3],
     );
+}
+
+fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(78, 60, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Terminal Session")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::Cyan));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let path = app
+        .agent_popup_path
+        .as_deref()
+        .unwrap_or("(no worktree selected)");
+    let state = agent_state_for_path(app, path);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("worktree: ", Style::default().fg(Color::Gray)),
+            Span::styled(path, Style::default().fg(Color::White)),
+            Span::raw("   "),
+            Span::styled("terminal: ", Style::default().fg(Color::Gray)),
+            Span::styled("shell", Style::default().fg(Color::LightCyan)),
+            Span::raw("   "),
+            Span::styled("status: ", Style::default().fg(Color::Gray)),
+            Span::styled(agent_state_text(state), agent_state_style(state)),
+        ])),
+        layout[0],
+    );
+
+    let mut lines: Vec<Line<'_>> = Vec::new();
+    if let Some(session) = app.agent_sessions.get(path) {
+        let visible_rows = layout[2].height.saturating_sub(2) as usize;
+        let width = layout[2].width.saturating_sub(2).max(1);
+        lines = render_terminal_lines(session, width, visible_rows);
+    }
+    if lines.is_empty() {
+        lines.push(Line::from("(terminal booting...)"));
+    }
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Terminal").borders(Borders::ALL))
+            .style(Style::default().fg(Color::White)),
+        layout[2],
+    );
+    frame.render_widget(
+        Paragraph::new("Typing sends input. Esc puts session in background. q quits session.")
+            .style(Style::default().fg(Color::Gray)),
+        layout[3],
+    );
+}
+
+fn agent_state_for_path(app: &App, path: &str) -> AgentState {
+    app.agent_sessions
+        .get(path)
+        .map(|s| s.state)
+        .unwrap_or(AgentState::Launching)
+}
+
+fn agent_state_text(state: AgentState) -> &'static str {
+    match state {
+        AgentState::Launching => "loading",
+        AgentState::Running => "running",
+        AgentState::Done => "done",
+        AgentState::Failed => "failed",
+    }
+}
+
+fn agent_state_style(state: AgentState) -> Style {
+    match state {
+        AgentState::Launching => Style::default().fg(Color::Yellow),
+        AgentState::Running => Style::default().fg(Color::LightCyan),
+        AgentState::Done => Style::default().fg(Color::Green),
+        AgentState::Failed => Style::default().fg(Color::Red),
+    }
+}
+
+fn render_terminal_lines(
+    session: &AgentSession,
+    width: u16,
+    visible_rows: usize,
+) -> Vec<Line<'static>> {
+    if width == 0 || visible_rows == 0 {
+        return Vec::new();
+    }
+
+    let screen = session.parser.screen();
+    let (rows, cols) = screen.size();
+    let cols = cols.min(width);
+    let start_row = rows.saturating_sub(visible_rows as u16);
+    let mut out = Vec::new();
+
+    for row in start_row..rows {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut run = String::new();
+        let mut run_style: Option<Style> = None;
+
+        for col in 0..cols {
+            let Some(cell) = screen.cell(row, col) else {
+                continue;
+            };
+            if cell.is_wide_continuation() {
+                continue;
+            }
+            let style = vt_cell_style(cell);
+            let mut text = cell.contents();
+            if text.is_empty() {
+                text.push(' ');
+            }
+
+            match run_style {
+                Some(existing) if existing == style => {
+                    run.push_str(text.as_str());
+                }
+                _ => {
+                    if !run.is_empty() {
+                        let taken = std::mem::take(&mut run);
+                        spans.push(Span::styled(taken, run_style.unwrap_or_default()));
+                    }
+                    run_style = Some(style);
+                    run.push_str(text.as_str());
+                }
+            }
+        }
+
+        if !run.is_empty() {
+            spans.push(Span::styled(run, run_style.unwrap_or_default()));
+        }
+
+        if spans.is_empty() {
+            out.push(Line::from(""));
+        } else {
+            out.push(Line::from(spans));
+        }
+    }
+
+    out
+}
+
+fn vt_cell_style(cell: &vt100::Cell) -> Style {
+    let mut style = Style::default();
+    style = style.fg(vt_color_to_ratatui(cell.fgcolor(), true));
+    style = style.bg(vt_color_to_ratatui(cell.bgcolor(), false));
+    if cell.bold() {
+        style = style.add_modifier(Modifier::BOLD);
+    }
+    if cell.italic() {
+        style = style.add_modifier(Modifier::ITALIC);
+    }
+    if cell.underline() {
+        style = style.add_modifier(Modifier::UNDERLINED);
+    }
+    style
+}
+
+fn vt_color_to_ratatui(color: vt100::Color, is_fg: bool) -> Color {
+    match color {
+        vt100::Color::Default => {
+            if is_fg {
+                Color::White
+            } else {
+                Color::Black
+            }
+        }
+        vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
+        vt100::Color::Idx(i) => ansi_idx_to_color(i),
+    }
+}
+
+fn ansi_idx_to_color(i: u8) -> Color {
+    match i {
+        0 => Color::Black,
+        1 => Color::Red,
+        2 => Color::Green,
+        3 => Color::Yellow,
+        4 => Color::Blue,
+        5 => Color::Magenta,
+        6 => Color::Cyan,
+        7 => Color::Gray,
+        8 => Color::DarkGray,
+        9 => Color::LightRed,
+        10 => Color::LightGreen,
+        11 => Color::LightYellow,
+        12 => Color::LightBlue,
+        13 => Color::LightMagenta,
+        14 => Color::LightCyan,
+        15 => Color::White,
+        16..=231 => {
+            let idx = i - 16;
+            let r = idx / 36;
+            let g = (idx % 36) / 6;
+            let b = idx % 6;
+            let scale = [0, 95, 135, 175, 215, 255];
+            Color::Rgb(scale[r as usize], scale[g as usize], scale[b as usize])
+        }
+        232..=255 => {
+            let shade = 8 + (i - 232) * 10;
+            Color::Rgb(shade, shade, shade)
+        }
+    }
 }
 
 fn draw_branch_conflict_confirm_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
