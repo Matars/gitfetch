@@ -3053,17 +3053,8 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     }
 }
 
-fn canvas_root_label(app: &App, root_branch: &str) -> String {
-    let current_node_matches_root = app
-        .worktrees
-        .iter()
-        .any(|wt| wt.is_current && wt.branch == root_branch);
-
-    if current_node_matches_root {
-        "[current]".to_string()
-    } else {
-        format!("[current: {}]", truncate_text(root_branch, 18))
-    }
+fn canvas_root_label(_app: &App, root_branch: &str) -> String {
+    format!("HEAD ({})", truncate_text(root_branch, 18))
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
@@ -3629,7 +3620,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
     match pane {
         WorktreePane::Canvas => vec![
             Line::from("Canvas panel"),
-            Line::from("- Graph root is [current: <branch>]"),
+            Line::from("- Graph root is HEAD (<branch>)"),
             Line::from("- Dotted edges show inferred branch parent links"),
             Line::from("- Arrow keys: move to nearest node in direction"),
             Line::from("- j/k: cycle nodes by index"),
