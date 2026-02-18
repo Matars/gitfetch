@@ -3305,10 +3305,14 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
     } else {
         Color::Gray
     };
-    let title = format!(
-        "worktree canvas [?]  z:{:.2}x pan:{:+.2},{:+.2}",
-        app.worktree_canvas_zoom, app.worktree_canvas_pan_x, app.worktree_canvas_pan_y
-    );
+    let title = if app.worktree_canvas_zoom != 1.0
+        || app.worktree_canvas_pan_x != 0.0
+        || app.worktree_canvas_pan_y != 0.0
+    {
+        format!("worktree graph  z:{:.1}x", app.worktree_canvas_zoom)
+    } else {
+        "worktree graph".to_string()
+    };
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -3339,7 +3343,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         .iter()
         .map(|point| logical_to_canvas_point(*point))
         .collect();
-    let root_point = (0.0f64, 1.14f64);
+    let root_point = (0.0f64, 1.35f64);
     let bounds = worktree_canvas_bounds(app);
     let selected_idx = app
         .selected_worktree
@@ -3350,31 +3354,21 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         .x_bounds([bounds.min_x, bounds.max_x])
         .y_bounds([bounds.min_y, bounds.max_y])
         .paint(|ctx| {
-            draw_canvas_backdrop(ctx, &bounds);
-
             for (idx, parent) in parents.iter().enumerate() {
                 let to = node_points[idx];
                 let from = parent
                     .and_then(|p| node_points.get(p).copied())
                     .unwrap_or(root_point);
-                let mid = (from.0, (from.1 + to.1) / 2.0 + 0.07);
                 let is_selected_edge =
                     idx == selected_idx || parent.map(|p| p == selected_idx).unwrap_or(false);
                 let edge_color = if is_selected_edge {
-                    Color::Cyan
+                    Color::LightCyan
                 } else {
                     Color::DarkGray
                 };
                 ctx.draw(&canvas::Line {
                     x1: from.0,
                     y1: from.1,
-                    x2: mid.0,
-                    y2: mid.1,
-                    color: edge_color,
-                });
-                ctx.draw(&canvas::Line {
-                    x1: mid.0,
-                    y1: mid.1,
                     x2: to.0,
                     y2: to.1,
                     color: edge_color,
@@ -3384,44 +3378,38 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
             ctx.draw(&canvas::Circle {
                 x: root_point.0,
                 y: root_point.1,
-                radius: 0.055,
+                radius: 0.08,
                 color: Color::LightMagenta,
             });
 
             for (idx, entry) in app.worktrees.iter().enumerate() {
                 let point = node_points[idx];
-                let color = if idx == selected_idx {
-                    Color::LightCyan
-                } else if entry.dirty {
-                    Color::Yellow
-                } else if entry.is_current {
-                    Color::LightMagenta
-                } else {
-                    Color::Gray
-                };
-
-                let dot = [point];
-                ctx.draw(&canvas::Points {
-                    coords: &dot,
-                    color,
-                });
 
                 if idx == selected_idx {
                     ctx.draw(&canvas::Circle {
                         x: point.0,
                         y: point.1,
-                        radius: 0.07,
+                        radius: 0.09,
                         color: Color::Cyan,
                     });
                 }
-                if entry.dirty {
-                    ctx.draw(&canvas::Circle {
-                        x: point.0,
-                        y: point.1,
-                        radius: 0.045,
-                        color: Color::Yellow,
-                    });
-                }
+
+                let node_color = if idx == selected_idx {
+                    Color::LightCyan
+                } else if entry.is_current {
+                    Color::LightMagenta
+                } else if entry.dirty {
+                    Color::Yellow
+                } else {
+                    Color::White
+                };
+
+                ctx.draw(&canvas::Circle {
+                    x: point.0,
+                    y: point.1,
+                    radius: 0.06,
+                    color: node_color,
+                });
             }
         });
 
@@ -3471,7 +3459,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
 }
 
 fn canvas_root_label(_app: &App, root_branch: &str) -> String {
-    format!("HEAD ({})", truncate_text(root_branch, 18))
+    format!("{}", truncate_text(root_branch, 14))
 }
 
 fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String {
@@ -3480,27 +3468,20 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
     } else {
         entry.branch.clone()
     };
-    if name.len() > 18 {
-        name = truncate_text(name.as_str(), 18);
+    if name.len() > 16 {
+        name = truncate_text(name.as_str(), 16);
     }
 
-    let state = if entry.dirty { "dirty" } else { "clean" };
     let agent = agent_badge_for_node(app, entry.path.as_str());
+    let agent_short = if agent.is_empty() { "" } else { " ..." };
+
     if selected {
-        format!("[{name} | {state}{agent}]")
+        let state = if entry.dirty { "*" } else { "" };
+        format!("{}{}{}", name, state, agent_short)
+    } else if entry.dirty {
+        format!("{}*", name)
     } else {
-        let mut chips = Vec::new();
-        if entry.dirty {
-            chips.push("*");
-        }
-        if !agent.is_empty() {
-            chips.push(agent.trim());
-        }
-        if chips.is_empty() {
-            name
-        } else {
-            format!("{name} {}", chips.join(" "))
-        }
+        name
     }
 }
 
@@ -3514,7 +3495,7 @@ struct CanvasBounds {
 
 fn worktree_canvas_bounds(app: &App) -> CanvasBounds {
     let span_x = 1.48 / app.worktree_canvas_zoom.max(0.65);
-    let span_y = 1.26 / app.worktree_canvas_zoom.max(0.65);
+    let span_y = 1.48 / app.worktree_canvas_zoom.max(0.65);
     CanvasBounds {
         min_x: -span_x + app.worktree_canvas_pan_x,
         max_x: span_x + app.worktree_canvas_pan_x,
@@ -3524,23 +3505,9 @@ fn worktree_canvas_bounds(app: &App) -> CanvasBounds {
 }
 
 fn logical_to_canvas_point(point: (f32, f32)) -> (f64, f64) {
-    let x = (point.0 as f64 - 0.5) * 2.3;
-    let y = 1.0 - point.1 as f64 * 2.06;
+    let x = (point.0 as f64 - 0.5) * 2.6;
+    let y = 0.9 - point.1 as f64 * 1.8;
     (x, y)
-}
-
-fn draw_canvas_backdrop(ctx: &mut canvas::Context<'_>, bounds: &CanvasBounds) {
-    let quarters = [0.25f64, 0.5f64, 0.75f64];
-    for ratio in quarters {
-        let y = bounds.min_y + (bounds.max_y - bounds.min_y) * ratio;
-        ctx.draw(&canvas::Line {
-            x1: bounds.min_x,
-            y1: y,
-            x2: bounds.max_x,
-            y2: y,
-            color: Color::DarkGray,
-        });
-    }
 }
 
 fn draw_canvas_label(
@@ -3569,7 +3536,7 @@ fn draw_canvas_label(
         x = max_x;
     }
     let y = sy
-        .saturating_sub(1)
+        .saturating_add(1)
         .clamp(area.y, area.bottom().saturating_sub(1));
     frame.render_widget(
         Paragraph::new(label.to_string()).style(style),
@@ -4066,17 +4033,24 @@ fn draw_worktree_help_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
     match pane {
         WorktreePane::Canvas => vec![
-            Line::from("Canvas panel"),
-            Line::from("- Graph root is HEAD (<branch>)"),
-            Line::from("- Canvas renderer uses ratatui::widgets::canvas"),
-            Line::from("- Curved links show inferred branch parent links"),
-            Line::from("- Arrow keys: move by direction with wrap across graph rows"),
-            Line::from("- h/l: move left/right among siblings at this level"),
-            Line::from("- j/k: move child/parent by graph level"),
-            Line::from("- +/- zoom, 0 reset, Shift+WASD pans camera"),
-            Line::from("- Selected node controls details/actions"),
-            Line::from("- tab: move focus to next panel"),
-            Line::from("- ?: close this help"),
+            Line::from("Worktree Graph"),
+            Line::from(""),
+            Line::from("- Top node (magenta) = current HEAD branch"),
+            Line::from("- Cyan ring = selected worktree"),
+            Line::from("- Yellow nodes = dirty (uncommitted changes)"),
+            Line::from("- Lines show parent branch relationships"),
+            Line::from(""),
+            Line::from("Navigation:"),
+            Line::from("  arrows  - move by graph direction"),
+            Line::from("  h/l     - left/right among siblings"),
+            Line::from("  j/k     - down/up by graph level"),
+            Line::from(""),
+            Line::from("Camera:"),
+            Line::from("  +/-     - zoom in/out"),
+            Line::from("  0       - reset view"),
+            Line::from("  Shift+WASD - pan"),
+            Line::from(""),
+            Line::from("  ?: close this help"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
