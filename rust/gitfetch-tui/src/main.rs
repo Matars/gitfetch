@@ -42,6 +42,7 @@ enum Mode {
     WorktreeCommitPushInput,
     WorktreeCreateInput,
     WorktreeBranchConflictConfirm,
+    WorktreeGitLogPopup,
     QuitWithSessionsConfirm,
     AgentPopup,
 }
@@ -79,6 +80,9 @@ struct App {
     confirm_delete_branch_yes: bool,
     worktree_commit_input: String,
     worktree_commit_path: Option<String>,
+    git_log_popup_path: Option<String>,
+    git_log_lines: Vec<String>,
+    git_log_scroll: u16,
     confirm_quit_with_sessions_yes: bool,
     quit_now: bool,
     agent_sessions: BTreeMap<String, AgentSession>,
@@ -243,6 +247,9 @@ impl App {
             confirm_delete_branch_yes: false,
             worktree_commit_input: String::new(),
             worktree_commit_path: None,
+            git_log_popup_path: None,
+            git_log_lines: Vec::new(),
+            git_log_scroll: 0,
             confirm_quit_with_sessions_yes: false,
             quit_now: false,
             agent_sessions: BTreeMap::new(),
@@ -396,6 +403,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         Mode::WorktreeBranchConflictConfirm => {
                             handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
                         }
+                        Mode::WorktreeGitLogPopup => {
+                            handle_worktree_git_log_mode_key(&mut app, key.code);
+                        }
                         Mode::QuitWithSessionsConfirm => {
                             handle_quit_with_sessions_mode_key(&mut app, key.code);
                         }
@@ -518,7 +528,10 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
         KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
         KeyCode::Char('h') => move_worktree_level_siblings(app, false),
-        KeyCode::Char('l') => move_worktree_level_siblings(app, true),
+        KeyCode::Char('l') => {
+            open_worktree_git_log_popup(app)?;
+        }
+        KeyCode::Char('L') => move_worktree_level_siblings(app, true),
         KeyCode::Char('j') => move_worktree_level_vertical(app, false),
         KeyCode::Char('k') => move_worktree_level_vertical(app, true),
         KeyCode::Char('r') => {
@@ -744,6 +757,93 @@ fn handle_branch_conflict_confirm_mode_key(
     }
 
     Ok(())
+}
+
+fn open_worktree_git_log_popup(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) else {
+        app.status_line = "No worktree selected".to_string();
+        return Ok(());
+    };
+
+    app.git_log_popup_path = Some(path.clone());
+    app.git_log_lines = load_worktree_git_log(path.as_str())?;
+    app.git_log_scroll = 0;
+    app.show_panel_help = false;
+    app.mode = Mode::WorktreeGitLogPopup;
+    app.status_line = format!("Opened git log popup for {}", path);
+    Ok(())
+}
+
+fn load_worktree_git_log(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            path,
+            "reflog",
+            "--date=relative",
+            "--decorate",
+            "--max-count",
+            "80",
+            "--pretty=format:%h %gd (%cr) %gs",
+        ])
+        .output()?;
+
+    if output.status.success() {
+        let text = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+            .lines()
+            .map(|line| line.trim_end().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<String>>();
+
+        if text.is_empty() {
+            Ok(vec![
+                "(no reflog entries found for this worktree)".to_string()
+            ])
+        } else {
+            Ok(text)
+        }
+    } else {
+        let stderr = sanitize_for_tui(String::from_utf8_lossy(&output.stderr).as_ref())
+            .trim()
+            .to_string();
+        let stdout = sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+            .trim()
+            .to_string();
+        let reason = if !stderr.is_empty() { stderr } else { stdout };
+        Ok(vec![format!("Failed to load git reflog: {}", reason)])
+    }
+}
+
+fn handle_worktree_git_log_mode_key(app: &mut App, code: KeyCode) {
+    let max_scroll = app.git_log_lines.len().saturating_sub(1) as u16;
+    match code {
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('l') => {
+            app.mode = Mode::Normal;
+            app.git_log_popup_path = None;
+            app.git_log_lines.clear();
+            app.git_log_scroll = 0;
+            app.status_line = "Closed git log popup".to_string();
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.git_log_scroll = app.git_log_scroll.saturating_add(1).min(max_scroll);
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.git_log_scroll = app.git_log_scroll.saturating_sub(1);
+        }
+        KeyCode::PageDown => {
+            app.git_log_scroll = app.git_log_scroll.saturating_add(8).min(max_scroll);
+        }
+        KeyCode::PageUp => {
+            app.git_log_scroll = app.git_log_scroll.saturating_sub(8);
+        }
+        KeyCode::Home => {
+            app.git_log_scroll = 0;
+        }
+        KeyCode::End => {
+            app.git_log_scroll = max_scroll;
+        }
+        _ => {}
+    }
 }
 
 fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Error>> {
@@ -2920,6 +3020,10 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, app: &App) {
         draw_branch_conflict_confirm_modal(frame, app);
     }
 
+    if matches!(app.mode, Mode::WorktreeGitLogPopup) {
+        draw_worktree_git_log_modal(frame, app);
+    }
+
     if matches!(app.mode, Mode::QuitWithSessionsConfirm) {
         draw_quit_with_sessions_modal(frame, app);
     }
@@ -4101,6 +4205,10 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::styled("x", Style::default().fg(Color::Yellow)),
             Span::raw(" prune stale"),
         ]),
+        Line::from(vec![
+            Span::styled("l", Style::default().fg(Color::LightCyan)),
+            Span::raw(" git command history popup"),
+        ]),
         Line::from(""),
         Line::from(vec![
             Span::styled("tab", Style::default().fg(Color::LightBlue)),
@@ -4127,7 +4235,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" pan camera"),
         ]),
         Line::from(vec![
-            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
+            Span::styled("h/L", Style::default().fg(Color::LightBlue)),
             Span::raw(" left/right in level"),
         ]),
         Line::from(vec![
@@ -4180,8 +4288,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
-            Line::from("  h/l     - left/right among siblings"),
+            Line::from("  h/L     - left/right among siblings"),
             Line::from("  j/k     - down/up by graph level"),
+            Line::from("  l       - open git command history popup"),
             Line::from(""),
             Line::from("Camera:"),
             Line::from("  +/-     - zoom in/out"),
@@ -4201,6 +4310,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
+            Line::from("- l: open git command history (reflog) popup"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
@@ -4212,6 +4322,64 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- ?: close this help"),
         ],
     }
+}
+
+fn draw_worktree_git_log_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
+    let popup = centered_rect(82, 72, frame.area());
+    frame.render_widget(Clear, popup);
+
+    let border = Block::default()
+        .title("Git Command History")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black))
+        .border_style(Style::default().fg(Color::LightCyan));
+    frame.render_widget(border, popup);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    let path = app
+        .git_log_popup_path
+        .as_deref()
+        .unwrap_or("(no worktree selected)");
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("worktree: ", Style::default().fg(Color::Gray)),
+            Span::styled(path, Style::default().fg(Color::White)),
+        ]))
+        .style(Style::default().fg(Color::White)),
+        layout[0],
+    );
+
+    let lines: Vec<Line<'_>> = if app.git_log_lines.is_empty() {
+        vec![Line::from("(no git log entries)")]
+    } else {
+        app.git_log_lines
+            .iter()
+            .map(|line| Line::from(line.as_str()))
+            .collect()
+    };
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((app.git_log_scroll, 0))
+            .block(Block::default().title("reflog").borders(Borders::ALL))
+            .style(Style::default().fg(Color::White)),
+        layout[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new("j/k or arrows scroll, PgUp/PgDn jump, Home/End, l|q|Esc close")
+            .style(Style::default().fg(Color::Gray)),
+        layout[2],
+    );
 }
 
 fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
