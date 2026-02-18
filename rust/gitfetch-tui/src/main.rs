@@ -528,10 +528,10 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('S') => pan_worktree_canvas(app, 0.0, -1.0),
         KeyCode::Char('D') => pan_worktree_canvas(app, 1.0, 0.0),
         KeyCode::Char('h') => move_worktree_level_siblings(app, false),
-        KeyCode::Char('l') => {
+        KeyCode::Char('l') => move_worktree_level_siblings(app, true),
+        KeyCode::Char('L') => {
             open_worktree_git_log_popup(app)?;
         }
-        KeyCode::Char('L') => move_worktree_level_siblings(app, true),
         KeyCode::Char('j') => move_worktree_level_vertical(app, false),
         KeyCode::Char('k') => move_worktree_level_vertical(app, true),
         KeyCode::Char('r') => {
@@ -817,7 +817,7 @@ fn load_worktree_git_log(path: &str) -> Result<Vec<String>, Box<dyn Error>> {
 fn handle_worktree_git_log_mode_key(app: &mut App, code: KeyCode) {
     let max_scroll = app.git_log_lines.len().saturating_sub(1) as u16;
     match code {
-        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('l') => {
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('L') => {
             app.mode = Mode::Normal;
             app.git_log_popup_path = None;
             app.git_log_lines.clear();
@@ -1587,6 +1587,18 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
         .to_string();
 
     if !merge.status.success() {
+        let conflicts = conflicted_files_in_worktree(parent.path.as_str());
+        if !conflicts.is_empty() {
+            return Ok(format!(
+                "Merge '{}' -> '{}' has conflicts in {} file(s): {}. Resolve conflicts in parent worktree '{}', then commit or abort the merge.",
+                selected.branch,
+                parent.branch,
+                conflicts.len(),
+                truncate_text(conflicts.join(", ").as_str(), 120),
+                parent.path
+            ));
+        }
+
         let reason = if !stderr.is_empty() {
             stderr
         } else if !stdout.is_empty() {
@@ -1630,6 +1642,23 @@ fn merge_selected_into_parent(app: &App) -> Result<String, Box<dyn Error>> {
             details
         ))
     }
+}
+
+fn conflicted_files_in_worktree(path: &str) -> Vec<String> {
+    let output = match Command::new("git")
+        .args(["-C", path, "diff", "--name-only", "--diff-filter=U"])
+        .output()
+    {
+        Ok(out) if out.status.success() => out,
+        _ => return Vec::new(),
+    };
+
+    sanitize_for_tui(String::from_utf8_lossy(&output.stdout).as_ref())
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect()
 }
 
 fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
@@ -4206,7 +4235,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" prune stale"),
         ]),
         Line::from(vec![
-            Span::styled("l", Style::default().fg(Color::LightCyan)),
+            Span::styled("L", Style::default().fg(Color::LightCyan)),
             Span::raw(" git command history popup"),
         ]),
         Line::from(""),
@@ -4235,7 +4264,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" pan camera"),
         ]),
         Line::from(vec![
-            Span::styled("h/L", Style::default().fg(Color::LightBlue)),
+            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
             Span::raw(" left/right in level"),
         ]),
         Line::from(vec![
@@ -4288,9 +4317,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("Navigation:"),
             Line::from("  arrows  - move by graph direction"),
-            Line::from("  h/L     - left/right among siblings"),
+            Line::from("  h/l     - left/right among siblings"),
             Line::from("  j/k     - down/up by graph level"),
-            Line::from("  l       - open git command history popup"),
+            Line::from("  L       - open git command history popup"),
             Line::from(""),
             Line::from("Camera:"),
             Line::from("  +/-     - zoom in/out"),
@@ -4310,7 +4339,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
             Line::from("- a: create worktree from branch name"),
-            Line::from("- l: open git command history (reflog) popup"),
+            Line::from("- L: open git command history (reflog) popup"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
             Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
@@ -4376,7 +4405,7 @@ fn draw_worktree_git_log_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new("j/k or arrows scroll, PgUp/PgDn jump, Home/End, l|q|Esc close")
+        Paragraph::new("j/k or arrows scroll, PgUp/PgDn jump, Home/End, L|q|Esc close")
             .style(Style::default().fg(Color::Gray)),
         layout[2],
     );
