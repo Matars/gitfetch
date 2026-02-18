@@ -12,7 +12,10 @@ use std::{
     fs,
 };
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers, MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -113,6 +116,7 @@ struct AgentSession {
     last_io_at: Instant,
     bytes_from_agent: u64,
     bytes_to_agent: u64,
+    scroll_offset: usize,
 }
 
 enum AgentEvent {
@@ -318,7 +322,7 @@ impl Drop for TuiGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
         let mut stdout = io::stdout();
-        let _ = execute!(stdout, LeaveAlternateScreen);
+        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
     }
 }
 
@@ -327,7 +331,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _guard = TuiGuard;
 
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -371,43 +375,53 @@ fn main() -> Result<(), Box<dyn Error>> {
             status_timeout
         };
         if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    if !matches!(app.mode, Mode::AgentPopup)
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                        && key.code == KeyCode::Char('c')
-                    {
-                        should_quit = true;
-                        continue;
-                    }
-                    match app.mode {
-                        Mode::Normal => {
-                            should_quit = handle_normal_mode_key(&mut app, key.code)?;
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if !matches!(app.mode, Mode::AgentPopup)
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                            && key.code == KeyCode::Char('c')
+                        {
+                            should_quit = true;
+                            continue;
                         }
-                        Mode::CommitInput => {
-                            handle_commit_mode_key(&mut app, key.code)?;
+                        match app.mode {
+                            Mode::Normal => {
+                                should_quit = handle_normal_mode_key(&mut app, key.code)?;
+                            }
+                            Mode::CommitInput => {
+                                handle_commit_mode_key(&mut app, key.code)?;
+                            }
+                            Mode::WorktreeCommitPushInput => {
+                                handle_worktree_commit_push_mode_key(&mut app, key.code)?;
+                            }
+                            Mode::WorktreeCreateInput => {
+                                handle_worktree_create_mode_key(&mut app, key.code)?;
+                            }
+                            Mode::WorktreeBranchConflictConfirm => {
+                                handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
+                            }
+                            Mode::QuitWithSessionsConfirm => {
+                                handle_quit_with_sessions_mode_key(&mut app, key.code);
+                            }
+                            Mode::AgentPopup => {
+                                handle_agent_popup_key(&mut app, key)?;
+                            }
                         }
-                        Mode::WorktreeCommitPushInput => {
-                            handle_worktree_commit_push_mode_key(&mut app, key.code)?;
-                        }
-                        Mode::WorktreeCreateInput => {
-                            handle_worktree_create_mode_key(&mut app, key.code)?;
-                        }
-                        Mode::WorktreeBranchConflictConfirm => {
-                            handle_branch_conflict_confirm_mode_key(&mut app, key.code)?;
-                        }
-                        Mode::QuitWithSessionsConfirm => {
-                            handle_quit_with_sessions_mode_key(&mut app, key.code);
-                        }
-                        Mode::AgentPopup => {
-                            handle_agent_popup_key(&mut app, key)?;
-                        }
-                    }
 
-                    if app.quit_now {
-                        should_quit = true;
+                        if app.quit_now {
+                            should_quit = true;
+                        }
                     }
                 }
+                Event::Mouse(mouse) => {
+                    if matches!(app.mode, Mode::AgentPopup) {
+                        let size = terminal.size()?;
+                        let frame_area = Rect::new(0, 0, size.width, size.height);
+                        handle_agent_popup_mouse(&mut app, mouse, frame_area);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -954,6 +968,7 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         last_io_at: now,
         bytes_from_agent: 0,
         bytes_to_agent: 0,
+        scroll_offset: 0,
     };
 
     app.agent_sessions.insert(path.to_string(), session);
@@ -1013,6 +1028,7 @@ fn write_to_agent(app: &mut App, path: &str, text: &str) -> Result<(), Box<dyn E
             writer.flush()?;
             session.bytes_to_agent = session.bytes_to_agent.saturating_add(text.len() as u64);
             session.last_io_at = Instant::now();
+            session.scroll_offset = 0;
             if session.state == AgentState::Launching {
                 session.state = AgentState::Running;
             }
@@ -4321,10 +4337,16 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     let mut lines: Vec<Line<'_>> = Vec::new();
+    let mut scroll_text = String::new();
     if let Some(session) = app.agent_sessions.get(path) {
         let visible_rows = layout[2].height.saturating_sub(2) as usize;
         let width = layout[2].width.saturating_sub(2).max(1);
-        lines = render_terminal_lines(session, width, visible_rows);
+        let max_scroll = max_terminal_scroll_offset(session);
+        let clamped_scroll = session.scroll_offset.min(max_scroll);
+        if clamped_scroll > 0 {
+            scroll_text = format!("  [scroll {}/{}]", clamped_scroll, max_scroll);
+        }
+        lines = render_terminal_lines(session, width, visible_rows, clamped_scroll);
     }
     if lines.is_empty() {
         lines.push(Line::from("(terminal booting...)"));
@@ -4332,7 +4354,11 @@ fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(Block::default().title("Terminal").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title(format!("Terminal{}", scroll_text))
+                    .borders(Borders::ALL),
+            )
             .style(Style::default().fg(Color::White)),
         layout[2],
     );
@@ -4360,12 +4386,87 @@ fn terminal_popup_mode_style(mode: TerminalPopupMode) -> Style {
 fn terminal_footer_text(mode: TerminalPopupMode) -> &'static str {
     match mode {
         TerminalPopupMode::Input => {
-            "INPUT mode: typing goes to terminal. : enters CONTROL (Ctrl+G also works)."
+            "INPUT mode: typing goes to terminal. Mouse wheel scrolls history. : enters CONTROL (Ctrl+G also works)."
         }
         TerminalPopupMode::Control => {
             "CONTROL mode: Esc background, q quit session, r restart, i return INPUT."
         }
     }
+}
+
+fn handle_agent_popup_mouse(app: &mut App, mouse: MouseEvent, frame_area: Rect) {
+    if app.terminal_popup_mode != TerminalPopupMode::Input {
+        return;
+    }
+
+    let Some(path) = app.agent_popup_path.clone() else {
+        return;
+    };
+
+    let scroll_panel = terminal_popup_scroll_panel(frame_area);
+    if !rect_contains(scroll_panel, mouse.column, mouse.row) {
+        return;
+    }
+
+    match mouse.kind {
+        MouseEventKind::ScrollUp => scroll_agent_popup(&mut app.agent_sessions, path.as_str(), 3),
+        MouseEventKind::ScrollDown => {
+            scroll_agent_popup_down(&mut app.agent_sessions, path.as_str(), 3)
+        }
+        _ => {}
+    }
+}
+
+fn scroll_agent_popup(sessions: &mut BTreeMap<String, AgentSession>, path: &str, amount: usize) {
+    let Some(session) = sessions.get_mut(path) else {
+        return;
+    };
+
+    let max_scroll = max_terminal_scroll_offset(session);
+    if max_scroll == 0 {
+        session.scroll_offset = 0;
+        return;
+    }
+
+    session.scroll_offset = (session.scroll_offset + amount).min(max_scroll);
+}
+
+fn scroll_agent_popup_down(
+    sessions: &mut BTreeMap<String, AgentSession>,
+    path: &str,
+    amount: usize,
+) {
+    let Some(session) = sessions.get_mut(path) else {
+        return;
+    };
+
+    session.scroll_offset = session.scroll_offset.saturating_sub(amount);
+}
+
+fn max_terminal_scroll_offset(session: &AgentSession) -> usize {
+    let total_rows = session.parser.screen().size().0 as usize;
+    let visible_rows = session.last_size.0 as usize;
+    total_rows.saturating_sub(visible_rows)
+}
+
+fn terminal_popup_scroll_panel(frame_area: Rect) -> Rect {
+    let popup = terminal_popup_rect(frame_area);
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
+        .split(popup);
+
+    layout[2]
+}
+
+fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
+    x >= rect.x && x < rect.right() && y >= rect.y && y < rect.bottom()
 }
 
 fn agent_state_for_path(app: &App, path: &str) -> AgentState {
@@ -4397,6 +4498,7 @@ fn render_terminal_lines(
     session: &AgentSession,
     width: u16,
     visible_rows: usize,
+    scroll_offset: usize,
 ) -> Vec<Line<'static>> {
     if width == 0 || visible_rows == 0 {
         return Vec::new();
@@ -4404,17 +4506,20 @@ fn render_terminal_lines(
 
     let screen = session.parser.screen();
     let (rows, cols) = screen.size();
+    let rows = rows as usize;
     let cols = cols.min(width);
-    let start_row = rows.saturating_sub(visible_rows as u16);
+    let clamped_scroll = scroll_offset.min(rows.saturating_sub(visible_rows));
+    let end_row = rows.saturating_sub(clamped_scroll);
+    let start_row = end_row.saturating_sub(visible_rows);
     let mut out = Vec::new();
 
-    for row in start_row..rows {
+    for row in start_row..end_row {
         let mut spans: Vec<Span<'static>> = Vec::new();
         let mut run = String::new();
         let mut run_style: Option<Style> = None;
 
         for col in 0..cols {
-            let Some(cell) = screen.cell(row, col) else {
+            let Some(cell) = screen.cell(row as u16, col) else {
                 continue;
             };
             if cell.is_wide_continuation() {
