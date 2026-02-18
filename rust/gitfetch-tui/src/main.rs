@@ -275,24 +275,6 @@ impl App {
         self.worktrees.get(self.selected_worktree)
     }
 
-    fn select_worktree_next(&mut self) {
-        if self.worktrees.is_empty() {
-            self.selected_worktree = 0;
-        } else {
-            self.selected_worktree = (self.selected_worktree + 1) % self.worktrees.len();
-        }
-    }
-
-    fn select_worktree_prev(&mut self) {
-        if self.worktrees.is_empty() {
-            self.selected_worktree = 0;
-        } else if self.selected_worktree == 0 {
-            self.selected_worktree = self.worktrees.len() - 1;
-        } else {
-            self.selected_worktree -= 1;
-        }
-    }
-
     fn next_worktree_pane(&mut self) {
         self.worktree_focus = match self.worktree_focus {
             WorktreePane::Canvas => WorktreePane::Details,
@@ -509,15 +491,17 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
             app.next_worktree_pane();
             app.show_panel_help = false;
         }
-        KeyCode::Char('h') => {
+        KeyCode::Char('?') => {
             app.show_panel_help = !app.show_panel_help;
         }
         KeyCode::Left => move_worktree_selection(app, NavDirection::Left),
         KeyCode::Right => move_worktree_selection(app, NavDirection::Right),
         KeyCode::Up => move_worktree_selection(app, NavDirection::Up),
         KeyCode::Down => move_worktree_selection(app, NavDirection::Down),
-        KeyCode::Char('j') => app.select_worktree_next(),
-        KeyCode::Char('k') => app.select_worktree_prev(),
+        KeyCode::Char('h') => move_worktree_level_siblings(app, false),
+        KeyCode::Char('l') => move_worktree_level_siblings(app, true),
+        KeyCode::Char('j') => move_worktree_level_vertical(app, false),
+        KeyCode::Char('k') => move_worktree_level_vertical(app, true),
         KeyCode::Char('r') => {
             refresh_worktrees(app);
             app.status_line = "Refreshed worktree list".to_string();
@@ -1553,6 +1537,114 @@ fn move_worktree_selection(app: &mut App, direction: NavDirection) {
         if score < best_score {
             best_score = score;
             best_idx = Some(idx);
+        }
+    }
+
+    if let Some(idx) = best_idx {
+        app.selected_worktree = idx;
+    }
+}
+
+fn move_worktree_level_siblings(app: &mut App, move_right: bool) {
+    if app.worktrees.len() < 2 || app.selected_worktree >= app.worktrees.len() {
+        return;
+    }
+
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let depths = graph_depths(&parents);
+    let points = graph_layout(&parents);
+    let current = app.selected_worktree;
+    let current_depth = depths[current];
+    let (cx, cy) = points[current];
+
+    let mut best_idx: Option<usize> = None;
+    let mut best_score = f32::MAX;
+    for (idx, (x, y)) in points.iter().enumerate() {
+        if idx == current || depths[idx] != current_depth {
+            continue;
+        }
+
+        let dx = *x - cx;
+        let in_direction = if move_right { dx > 0.02 } else { dx < -0.02 };
+        if !in_direction {
+            continue;
+        }
+
+        let score = dx.abs() + ((*y - cy).abs() * 1.4);
+        if score < best_score {
+            best_score = score;
+            best_idx = Some(idx);
+        }
+    }
+
+    if let Some(idx) = best_idx {
+        app.selected_worktree = idx;
+    }
+}
+
+fn move_worktree_level_vertical(app: &mut App, move_up: bool) {
+    if app.worktrees.len() < 2 || app.selected_worktree >= app.worktrees.len() {
+        return;
+    }
+
+    let root_branch = current_session_branch(app);
+    let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let depths = graph_depths(&parents);
+    let points = graph_layout(&parents);
+    let current = app.selected_worktree;
+    let current_depth = depths[current];
+    let (cx, cy) = points[current];
+
+    if move_up {
+        if let Some(parent_idx) = parents.get(current).and_then(|parent| *parent) {
+            app.selected_worktree = parent_idx;
+            return;
+        }
+
+        if current_depth == 0 {
+            return;
+        }
+    }
+
+    let target_depth = if move_up {
+        current_depth.saturating_sub(1)
+    } else {
+        current_depth + 1
+    };
+
+    let mut best_idx: Option<usize> = None;
+    let mut best_score = f32::MAX;
+
+    for (idx, depth) in depths.iter().enumerate() {
+        if idx == current || *depth != target_depth {
+            continue;
+        }
+
+        if !move_up && parents.get(idx).copied().flatten() != Some(current) {
+            continue;
+        }
+
+        let (x, y) = points[idx];
+        let score = (x - cx).abs() + (y - cy).abs();
+        if score < best_score {
+            best_score = score;
+            best_idx = Some(idx);
+        }
+    }
+
+    if best_idx.is_none() && !move_up {
+        for (idx, depth) in depths.iter().enumerate() {
+            if idx == current || *depth != target_depth {
+                continue;
+            }
+
+            let (x, y) = points[idx];
+            let score = (x - cx).abs() + (y - cy).abs();
+            if score < best_score {
+                best_score = score;
+                best_idx = Some(idx);
+            }
         }
     }
 
@@ -3092,7 +3184,7 @@ fn draw_worktree_canvas_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: R
         Color::Gray
     };
     let block = Block::default()
-        .title("worktree canvas [h]")
+        .title("worktree canvas [?]")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(Color::Black));
@@ -3616,7 +3708,7 @@ fn draw_worktree_details_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
     let panel = Paragraph::new(lines)
         .block(
             Block::default()
-                .title("details [h]")
+                .title("details [?]")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
                 .style(Style::default().bg(Color::Black)),
@@ -3694,7 +3786,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" switch panel"),
         ]),
         Line::from(vec![
-            Span::styled("h", Style::default().fg(Color::Yellow)),
+            Span::styled("?", Style::default().fg(Color::Yellow)),
             Span::raw(" panel help"),
         ]),
         Line::from(vec![
@@ -3702,8 +3794,12 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
             Span::raw(" move on canvas"),
         ]),
         Line::from(vec![
+            Span::styled("h/l", Style::default().fg(Color::LightBlue)),
+            Span::raw(" left/right in level"),
+        ]),
+        Line::from(vec![
             Span::styled("j/k", Style::default().fg(Color::LightBlue)),
-            Span::raw(" cycle nodes"),
+            Span::raw(" child/parent level"),
         ]),
     ];
 
@@ -3711,7 +3807,7 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         Paragraph::new(lines)
             .block(
                 Block::default()
-                    .title("actions [h]")
+                    .title("actions [?]")
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color))
                     .style(Style::default().bg(Color::Black)),
@@ -3746,10 +3842,11 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Graph root is HEAD (<branch>)"),
             Line::from("- Dotted edges show inferred branch parent links"),
             Line::from("- Arrow keys: move to nearest node in direction"),
-            Line::from("- j/k: cycle nodes by index"),
+            Line::from("- h/l: move left/right among siblings at this level"),
+            Line::from("- j/k: move child/parent by graph level"),
             Line::from("- Selected node controls details/actions"),
             Line::from("- tab: move focus to next panel"),
-            Line::from("- h: close this help"),
+            Line::from("- ?: close this help"),
         ],
         WorktreePane::Details => vec![
             Line::from("Details panel"),
@@ -3757,7 +3854,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- Shows ahead/behind and dirty/locked state"),
             Line::from("- Reflects current canvas selection"),
             Line::from("- tab: move focus to next panel"),
-            Line::from("- h: close this help"),
+            Line::from("- ?: close this help"),
         ],
         WorktreePane::Actions => vec![
             Line::from("Actions panel"),
@@ -3772,7 +3869,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- u: fetch+pull connected parent node before merge"),
             Line::from("- P: selected worktree add+commit+push with message popup"),
             Line::from("- x: prune stale worktrees"),
-            Line::from("- h: close this help"),
+            Line::from("- ?: close this help"),
         ],
     }
 }
