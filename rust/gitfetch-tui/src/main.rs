@@ -3929,15 +3929,9 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- a: create worktree from branch name"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
-<<<<<<< HEAD
-            Line::from("- terminal popup: Ctrl+G toggles INPUT/CONTROL shortcuts"),
+            Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch connected parent node"),
             Line::from("- p: selected worktree add+commit+push with message popup"),
-=======
-            Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
-            Line::from("- f: fetch selected worktree"),
-            Line::from("- p: pull selected worktree"),
->>>>>>> 08d279f77fb57d90be7e226d7882217dfc2218ab
             Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- m: merge selected branch into connected parent node"),
             Line::from("- x: prune stale worktrees"),
