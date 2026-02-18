@@ -519,19 +519,19 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         KeyCode::Char('z') => {
             open_terminal_popup_for_selected_worktree(app)?;
         }
-        KeyCode::Char('f') => {
-            if let Some(selected) = app.selected_worktree() {
-                let output = run_git(&["-C", selected.path.as_str(), "fetch", "--all", "--prune"])?;
-                app.status_line = output;
-                refresh_worktrees(app);
+        KeyCode::Char('p') => {
+            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
+                app.mode = Mode::WorktreeCommitPushInput;
+                app.worktree_commit_input.clear();
+                app.worktree_commit_path = Some(path);
+                app.status_line =
+                    "Worktree push mode: commit message, Enter to add/commit/push".to_string();
             }
         }
-        KeyCode::Char('p') => {
-            if let Some(selected) = app.selected_worktree() {
-                let output = run_git(&["-C", selected.path.as_str(), "pull", "--ff-only"])?;
-                app.status_line = output;
-                refresh_worktrees(app);
-            }
+        KeyCode::Char('f') => {
+            app.status_line = update_connected_parent(app)?;
+            refresh_worktrees(app);
+            refresh_status(app);
         }
         KeyCode::Char('x') => {
             app.status_line = run_git(&["worktree", "prune"])?;
@@ -544,20 +544,6 @@ fn handle_worktree_mode_key(app: &mut App, code: KeyCode) -> Result<bool, Box<dy
         }
         KeyCode::Char('m') => {
             app.status_line = merge_selected_into_parent(app)?;
-            refresh_worktrees(app);
-            refresh_status(app);
-        }
-        KeyCode::Char('P') => {
-            if let Some(path) = app.selected_worktree().map(|wt| wt.path.clone()) {
-                app.mode = Mode::WorktreeCommitPushInput;
-                app.worktree_commit_input.clear();
-                app.worktree_commit_path = Some(path);
-                app.status_line =
-                    "Worktree push mode: commit message, Enter to add/commit/push".to_string();
-            }
-        }
-        KeyCode::Char('u') => {
-            app.status_line = update_connected_parent(app)?;
             refresh_worktrees(app);
             refresh_status(app);
         }
@@ -1448,24 +1434,15 @@ fn update_connected_parent(app: &App) -> Result<String, Box<dyn Error>> {
     let parent = app.worktrees[parent_idx].clone();
 
     if parent.detached || parent.branch.is_empty() {
-        return Ok("Parent node is detached; cannot pull updates".to_string());
-    }
-
-    if parent.dirty {
-        return Ok(format!(
-            "Parent '{}' is dirty; commit/stash there before pull",
-            parent.branch
-        ));
+        return Ok("Parent node is detached; cannot fetch updates".to_string());
     }
 
     let fetch = run_git(&["-C", parent.path.as_str(), "fetch", "--all", "--prune"])?;
-    let pull = run_git(&["-C", parent.path.as_str(), "pull", "--ff-only"])?;
 
     Ok(format!(
-        "Updated parent '{}' - {} | {}",
+        "Fetched parent '{}' - {}",
         parent.branch,
         single_line(fetch.as_str()),
-        single_line(pull.as_str())
     ))
 }
 
@@ -3842,11 +3819,11 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         ]),
         Line::from(vec![
             Span::styled("f", Style::default().fg(Color::Cyan)),
-            Span::raw(" fetch selected"),
+            Span::raw(" fetch parent"),
         ]),
         Line::from(vec![
             Span::styled("p", Style::default().fg(Color::Magenta)),
-            Span::raw(" pull selected"),
+            Span::raw(" add+commit+push"),
         ]),
         Line::from(vec![
             Span::styled("d", Style::default().fg(Color::LightRed)),
@@ -3855,14 +3832,6 @@ fn draw_worktree_actions_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: 
         Line::from(vec![
             Span::styled("m", Style::default().fg(Color::LightGreen)),
             Span::raw(" merge to parent"),
-        ]),
-        Line::from(vec![
-            Span::styled("u", Style::default().fg(Color::Cyan)),
-            Span::raw(" update parent"),
-        ]),
-        Line::from(vec![
-            Span::styled("P", Style::default().fg(Color::LightMagenta)),
-            Span::raw(" add+commit+push"),
         ]),
         Line::from(vec![
             Span::styled("x", Style::default().fg(Color::Yellow)),
@@ -3950,12 +3919,10 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
             Line::from("- terminal popup: Ctrl+G toggles INPUT/CONTROL shortcuts"),
-            Line::from("- f: fetch selected worktree"),
-            Line::from("- p: pull selected worktree"),
+            Line::from("- f: fetch connected parent node"),
+            Line::from("- p: selected worktree add+commit+push with message popup"),
             Line::from("- d: delete selected worktree (safe checks)"),
             Line::from("- m: merge selected branch into connected parent node"),
-            Line::from("- u: fetch+pull connected parent node before merge"),
-            Line::from("- P: selected worktree add+commit+push with message popup"),
             Line::from("- x: prune stale worktrees"),
             Line::from("- ?: close this help"),
         ],
