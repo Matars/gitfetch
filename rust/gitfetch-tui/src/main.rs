@@ -3600,17 +3600,21 @@ fn canvas_node_label(app: &App, entry: &WorktreeEntry, selected: bool) -> String
         name = truncate_text(name.as_str(), 16);
     }
 
-    let agent = agent_badge_for_node(app, entry.path.as_str());
-    let agent_short = if agent.is_empty() { "" } else { " ..." };
-
-    if selected {
+    let mut label = if selected {
         let state = if entry.dirty { "*" } else { "" };
-        format!("{}{}{}", name, state, agent_short)
+        format!("{}{}", name, state)
     } else if entry.dirty {
         format!("{}*", name)
     } else {
         name
+    };
+
+    if let Some(indicator) = worktree_node_activity_indicator(app, entry.path.as_str()) {
+        label.push(' ');
+        label.push_str(indicator);
     }
+
+    label
 }
 
 #[derive(Clone, Copy)]
@@ -3693,40 +3697,23 @@ fn canvas_point_to_screen(
     Some((sx, sy))
 }
 
-fn agent_badge_for_node(app: &App, path: &str) -> String {
-    let Some(session) = app.agent_sessions.get(path) else {
-        return String::new();
-    };
-
+fn worktree_node_activity_indicator<'a>(app: &'a App, path: &'a str) -> Option<&'static str> {
+    let session = app.agent_sessions.get(path)?;
     let now = Instant::now();
-
-    let in_foreground = matches!(app.mode, Mode::AgentPopup)
-        && app
-            .agent_popup_path
-            .as_deref()
-            .map(|p| p == path)
-            .unwrap_or(false);
-
-    if agent_session_is_live(session) {
-        if agent_session_is_active(session, now) {
-            if in_foreground {
-                return " A*".to_string();
-            }
-            return " A".to_string();
-        }
-
-        let idle = agent_session_idle_seconds(session, now);
-        if in_foreground {
-            return format!(" I{}s*", idle);
-        }
-        return format!(" I{}s", idle);
+    let is_working = session.state == AgentState::Launching
+        || (agent_session_is_live(session) && agent_session_is_active(session, now));
+    if !is_working {
+        return None;
     }
 
-    match session.state {
-        AgentState::Done => " D".to_string(),
-        AgentState::Failed => " F".to_string(),
-        AgentState::Launching | AgentState::Running => " I".to_string(),
-    }
+    const FRAMES: [&str; 8] = [
+        "[|   ]", "[ /  ]", "[  - ]", "[   \\]", "[   |]", "[  / ]", "[ -  ]", "[\\   ]",
+    ];
+    let elapsed = now
+        .saturating_duration_since(session.launched_at)
+        .as_millis();
+    let frame_idx = ((elapsed / 120) % FRAMES.len() as u128) as usize;
+    Some(FRAMES[frame_idx])
 }
 
 fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
