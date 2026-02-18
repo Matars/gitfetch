@@ -1507,6 +1507,7 @@ fn move_worktree_selection(app: &mut App, direction: NavDirection) {
 
     let root_branch = current_session_branch(app);
     let parents = worktree_parent_map(&app.worktrees, root_branch.as_str());
+    let depths = graph_depths(&parents);
     let points = graph_layout(&parents);
     let (cx, cy) = points[app.selected_worktree];
     let mut best_idx: Option<usize> = None;
@@ -1538,6 +1539,93 @@ fn move_worktree_selection(app: &mut App, direction: NavDirection) {
             best_score = score;
             best_idx = Some(idx);
         }
+    }
+
+    if best_idx.is_none() {
+        let current = app.selected_worktree;
+        let current_depth = depths[current];
+        let max_depth = depths.iter().copied().max().unwrap_or(0);
+        let mut rows: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for (idx, depth) in depths.iter().enumerate() {
+            rows.entry(*depth).or_default().push(idx);
+        }
+        for nodes in rows.values_mut() {
+            nodes.sort_by(|a, b| points[*a].0.total_cmp(&points[*b].0));
+        }
+
+        let current_pos = rows
+            .get(&current_depth)
+            .and_then(|nodes| nodes.iter().position(|idx| *idx == current))
+            .unwrap_or(0);
+
+        let next_nonempty_depth = |order: Vec<usize>, rows: &BTreeMap<usize, Vec<usize>>| {
+            order
+                .into_iter()
+                .find(|depth| rows.get(depth).map(|n| !n.is_empty()).unwrap_or(false))
+        };
+
+        best_idx = match direction {
+            NavDirection::Right => {
+                let next_on_row = rows
+                    .get(&current_depth)
+                    .and_then(|nodes| nodes.get(current_pos + 1))
+                    .copied();
+                next_on_row.or_else(|| {
+                    let order: Vec<usize> = ((current_depth + 1)..=max_depth)
+                        .chain(0..=current_depth)
+                        .collect();
+                    next_nonempty_depth(order, &rows)
+                        .and_then(|depth| rows.get(&depth))
+                        .and_then(|nodes| nodes.last())
+                        .copied()
+                })
+            }
+            NavDirection::Left => {
+                let prev_on_row = rows
+                    .get(&current_depth)
+                    .and_then(|nodes| current_pos.checked_sub(1).and_then(|pos| nodes.get(pos)))
+                    .copied();
+                prev_on_row.or_else(|| {
+                    let order: Vec<usize> = (0..current_depth)
+                        .rev()
+                        .chain((current_depth..=max_depth).rev())
+                        .collect();
+                    next_nonempty_depth(order, &rows)
+                        .and_then(|depth| rows.get(&depth))
+                        .and_then(|nodes| nodes.first())
+                        .copied()
+                })
+            }
+            NavDirection::Down => {
+                let order: Vec<usize> = ((current_depth + 1)..=max_depth)
+                    .chain(0..=current_depth)
+                    .collect();
+                next_nonempty_depth(order, &rows)
+                    .and_then(|depth| rows.get(&depth))
+                    .and_then(|nodes| {
+                        nodes.iter().copied().min_by(|a, b| {
+                            let ax = (points[*a].0 - cx).abs();
+                            let bx = (points[*b].0 - cx).abs();
+                            ax.total_cmp(&bx)
+                        })
+                    })
+            }
+            NavDirection::Up => {
+                let order: Vec<usize> = (0..current_depth)
+                    .rev()
+                    .chain((current_depth..=max_depth).rev())
+                    .collect();
+                next_nonempty_depth(order, &rows)
+                    .and_then(|depth| rows.get(&depth))
+                    .and_then(|nodes| {
+                        nodes.iter().copied().min_by(|a, b| {
+                            let ax = (points[*a].0 - cx).abs();
+                            let bx = (points[*b].0 - cx).abs();
+                            ax.total_cmp(&bx)
+                        })
+                    })
+            }
+        };
     }
 
     if let Some(idx) = best_idx {
@@ -3841,7 +3929,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("Canvas panel"),
             Line::from("- Graph root is HEAD (<branch>)"),
             Line::from("- Dotted edges show inferred branch parent links"),
-            Line::from("- Arrow keys: move to nearest node in direction"),
+            Line::from("- Arrow keys: move by direction with wrap across graph rows"),
             Line::from("- h/l: move left/right among siblings at this level"),
             Line::from("- j/k: move child/parent by graph level"),
             Line::from("- Selected node controls details/actions"),
@@ -4820,19 +4908,13 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 }
 
 fn terminal_popup_rect(area: Rect) -> Rect {
-    let horizontal_margin = 1;
     let vertical_margin = 1;
-
-    let available_width = area.width.saturating_sub(horizontal_margin * 2);
     let available_height = area.height.saturating_sub(vertical_margin * 2);
 
-    let desired_width = (available_width.saturating_mul(45) / 100).max(80);
-    let width = desired_width.min(available_width).max(1);
+    let width = area.width.max(1);
     let height = available_height.max(1);
 
-    let x = area
-        .x
-        .saturating_add(area.width.saturating_sub(horizontal_margin + width));
+    let x = area.x;
     let y = area.y.saturating_add(vertical_margin);
 
     Rect::new(x, y, width, height)
