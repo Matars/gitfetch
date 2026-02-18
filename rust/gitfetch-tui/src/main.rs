@@ -953,7 +953,7 @@ fn resize_terminal_session(app: &mut App, path: &str, rows: u16, cols: u16) {
 
 /// Calculate terminal popup dimensions based on frame size
 fn calc_terminal_popup_size(frame_area: Rect) -> (u16, u16) {
-    let popup = centered_rect(78, 60, frame_area);
+    let popup = terminal_popup_rect(frame_area);
     let inner = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
@@ -3837,7 +3837,7 @@ fn draw_worktree_create_modal(frame: &mut ratatui::Frame<'_>, app: &App) {
 }
 
 fn draw_agent_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let popup = centered_rect(78, 60, frame.area());
+    let popup = terminal_popup_rect(frame.area());
     frame.render_widget(Clear, popup);
 
     let border = Block::default()
@@ -4720,4 +4720,23 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vertical[1])[1]
+}
+
+fn terminal_popup_rect(area: Rect) -> Rect {
+    let horizontal_margin = 1;
+    let vertical_margin = 1;
+
+    let available_width = area.width.saturating_sub(horizontal_margin * 2);
+    let available_height = area.height.saturating_sub(vertical_margin * 2);
+
+    let desired_width = (available_width.saturating_mul(45) / 100).max(80);
+    let width = desired_width.min(available_width).max(1);
+    let height = available_height.max(1);
+
+    let x = area
+        .x
+        .saturating_add(area.width.saturating_sub(horizontal_margin + width));
+    let y = area.y.saturating_add(vertical_margin);
+
+    Rect::new(x, y, width, height)
 }
