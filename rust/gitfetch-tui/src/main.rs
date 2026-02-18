@@ -109,6 +109,10 @@ struct AgentSession {
     writer: Option<Box<dyn Write + Send>>,
     child: Option<Box<dyn portable_pty::Child + Send>>,
     last_size: (u16, u16),
+    launched_at: Instant,
+    last_io_at: Instant,
+    bytes_from_agent: u64,
+    bytes_to_agent: u64,
 }
 
 enum AgentEvent {
@@ -938,6 +942,7 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         }
     });
 
+    let now = Instant::now();
     let session = AgentSession {
         state: AgentState::Launching,
         parser: vt100::Parser::new(TERM_ROWS, TERM_COLS, 2000),
@@ -945,6 +950,10 @@ fn launch_shell_session(app: &mut App, path: &str) -> Result<(), Box<dyn Error>>
         writer: Some(writer),
         child: Some(child),
         last_size: (TERM_ROWS, TERM_COLS),
+        launched_at: now,
+        last_io_at: now,
+        bytes_from_agent: 0,
+        bytes_to_agent: 0,
     };
 
     app.agent_sessions.insert(path.to_string(), session);
@@ -1002,6 +1011,11 @@ fn write_to_agent(app: &mut App, path: &str, text: &str) -> Result<(), Box<dyn E
         if let Some(writer) = session.writer.as_mut() {
             writer.write_all(text.as_bytes())?;
             writer.flush()?;
+            session.bytes_to_agent = session.bytes_to_agent.saturating_add(text.len() as u64);
+            session.last_io_at = Instant::now();
+            if session.state == AgentState::Launching {
+                session.state = AgentState::Running;
+            }
         }
     }
     Ok(())
@@ -1013,11 +1027,45 @@ fn drain_agent_events(app: &mut App) {
             AgentEvent::Output { path, bytes } => {
                 if let Some(session) = app.agent_sessions.get_mut(path.as_str()) {
                     session.state = AgentState::Running;
+                    session.bytes_from_agent =
+                        session.bytes_from_agent.saturating_add(bytes.len() as u64);
+                    session.last_io_at = Instant::now();
                     session.parser.process(bytes.as_slice());
                 }
             }
         }
     }
+}
+
+const AGENT_ACTIVE_WINDOW: Duration = Duration::from_secs(3);
+
+fn agent_session_is_live(session: &AgentSession) -> bool {
+    session.child.is_some() && session.writer.is_some()
+}
+
+fn agent_session_idle_seconds(session: &AgentSession, now: Instant) -> u64 {
+    now.saturating_duration_since(session.last_io_at).as_secs()
+}
+
+fn agent_session_is_active(session: &AgentSession, now: Instant) -> bool {
+    agent_session_is_live(session)
+        && now.saturating_duration_since(session.last_io_at) <= AGENT_ACTIVE_WINDOW
+}
+
+fn agent_session_avg_bps(session: &AgentSession, now: Instant) -> u64 {
+    let seconds = now
+        .saturating_duration_since(session.launched_at)
+        .as_secs()
+        .max(1);
+    session.bytes_from_agent / seconds
+}
+
+fn session_label_from_path(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path)
+        .to_string()
 }
 
 fn refresh_agent_sessions(app: &mut App) {
@@ -3186,6 +3234,32 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
         status_limit.max(10),
     );
 
+    let now = Instant::now();
+    let mut active_sessions = 0usize;
+    let mut idle_sessions = 0usize;
+    let mut live_summary: Vec<(bool, u64, u64, String)> = app
+        .agent_sessions
+        .iter()
+        .filter_map(|(path, session)| {
+            if !agent_session_is_live(session) {
+                return None;
+            }
+            let is_active = agent_session_is_active(session, now);
+            if is_active {
+                active_sessions += 1;
+            } else {
+                idle_sessions += 1;
+            }
+            Some((
+                is_active,
+                agent_session_avg_bps(session, now),
+                agent_session_idle_seconds(session, now),
+                session_label_from_path(path),
+            ))
+        })
+        .collect();
+    live_summary.sort_by(|a, b| b.cmp(a));
+
     let info = vec![
         Line::from(vec![
             Span::styled("Branch: ", Style::default().fg(Color::Gray)),
@@ -3215,6 +3289,60 @@ fn draw_pulse_panel(frame: &mut ratatui::Frame<'_>, app: &App, area: Rect) {
                 Style::default().fg(Color::Yellow),
             ),
         ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("PTY sessions: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{} live", active_sessions + idle_sessions),
+                Style::default().fg(Color::LightCyan),
+            ),
+            Span::raw("  "),
+            Span::styled("active ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                active_sessions.to_string(),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("  "),
+            Span::styled("idle ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                idle_sessions.to_string(),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]),
+        Line::from({
+            if live_summary.is_empty() {
+                vec![
+                    Span::styled("Live PTY: ", Style::default().fg(Color::Gray)),
+                    Span::raw("none"),
+                ]
+            } else {
+                let mut spans = vec![Span::styled("Live PTY: ", Style::default().fg(Color::Gray))];
+                for (idx, (is_active, bps, idle_secs, label)) in
+                    live_summary.iter().take(2).enumerate()
+                {
+                    if idx > 0 {
+                        spans.push(Span::raw("  "));
+                    }
+                    let mode = if *is_active { "A" } else { "I" };
+                    let color = if *is_active {
+                        Color::LightGreen
+                    } else {
+                        Color::Yellow
+                    };
+                    spans.push(Span::styled(
+                        format!(
+                            "{} {} {}B/s {}s",
+                            truncate_text(label, 12),
+                            mode,
+                            bps,
+                            idle_secs
+                        ),
+                        Style::default().fg(color),
+                    ));
+                }
+                spans
+            }
+        }),
         Line::from(""),
         Line::from(Span::styled(
             "Live refresh every ~700ms",
@@ -3570,6 +3698,8 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
         return String::new();
     };
 
+    let now = Instant::now();
+
     let in_foreground = matches!(app.mode, Mode::AgentPopup)
         && app
             .agent_popup_path
@@ -3577,18 +3707,26 @@ fn agent_badge_for_node(app: &App, path: &str) -> String {
             .map(|p| p == path)
             .unwrap_or(false);
 
-    let marker = match session.state {
-        AgentState::Launching | AgentState::Running => {
+    if agent_session_is_live(session) {
+        if agent_session_is_active(session, now) {
             if in_foreground {
-                " ...fg"
-            } else {
-                " ...bg"
+                return " A*".to_string();
             }
+            return " A".to_string();
         }
-        AgentState::Done => " ✓",
-        AgentState::Failed => " !",
-    };
-    marker.to_string()
+
+        let idle = agent_session_idle_seconds(session, now);
+        if in_foreground {
+            return format!(" I{}s*", idle);
+        }
+        return format!(" I{}s", idle);
+    }
+
+    match session.state {
+        AgentState::Done => " D".to_string(),
+        AgentState::Failed => " F".to_string(),
+        AgentState::Launching | AgentState::Running => " I".to_string(),
+    }
 }
 
 fn graph_layout(parents: &[Option<usize>]) -> Vec<(f32, f32)> {
