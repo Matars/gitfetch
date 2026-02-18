@@ -729,6 +729,17 @@ fn handle_agent_popup_key(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn Er
         return Ok(());
     }
 
+    if app.terminal_popup_mode == TerminalPopupMode::Input
+        && key.modifiers.is_empty()
+        && matches!(code, KeyCode::Char(':'))
+    {
+        app.terminal_popup_mode = match app.terminal_popup_mode {
+            TerminalPopupMode::Input => TerminalPopupMode::Control,
+            TerminalPopupMode::Control => TerminalPopupMode::Input,
+        };
+        return Ok(());
+    }
+
     if app.terminal_popup_mode == TerminalPopupMode::Control {
         match code {
             KeyCode::Esc => {
@@ -3949,7 +3960,7 @@ fn worktree_help_lines(pane: WorktreePane) -> Vec<Line<'static>> {
             Line::from("- a: create worktree from branch name"),
             Line::from("- o: open/reopen terminal popup for selected node"),
             Line::from("- z: same as o (open/reopen terminal popup)"),
-            Line::from("- terminal popup: Ctrl+G toggles INPUT/CONTROL shortcuts"),
+            Line::from("- terminal popup: : enters CONTROL, Ctrl+G toggles INPUT/CONTROL"),
             Line::from("- f: fetch selected worktree"),
             Line::from("- p: pull selected worktree"),
             Line::from("- d: delete selected worktree (safe checks)"),
@@ -4108,7 +4119,7 @@ fn terminal_popup_mode_style(mode: TerminalPopupMode) -> Style {
 fn terminal_footer_text(mode: TerminalPopupMode) -> &'static str {
     match mode {
         TerminalPopupMode::Input => {
-            "INPUT mode: typing goes to terminal. Ctrl+G switches to CONTROL mode."
+            "INPUT mode: typing goes to terminal. : enters CONTROL (Ctrl+G also works)."
         }
         TerminalPopupMode::Control => {
             "CONTROL mode: Esc background, q quit session, r restart, i return INPUT."
