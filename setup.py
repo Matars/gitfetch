@@ -2,9 +2,6 @@
 Setup configuration for gitfetch
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-setup(
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
-)
+setup()
