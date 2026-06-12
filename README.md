@@ -69,7 +69,7 @@ make dev
 
 ```bash
 brew uninstall gitfetch          # Homebrew
-brew untap matars/gitfetch     # Homebrew tap
+brew untap matars/gitfetch     # Remove the Homebrew tap
 ```
 
 ```bash
