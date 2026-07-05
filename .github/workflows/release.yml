@@ -18,8 +18,6 @@ jobs:
         include:
           - os: ubuntu-latest
             asset_name: gitfetch-linux-x86_64
-          - os: macos-13
-            asset_name: gitfetch-macos-x86_64
           - os: macos-latest
             asset_name: gitfetch-macos-arm64
           - os: windows-latest
