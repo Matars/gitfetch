@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  # ──────────────────────────────────────────
+  # 1. Build binaries for all platforms
+  # ──────────────────────────────────────────
+  build:
+    name: Build binary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: gitfetch-linux-x86_64
+          - os: macos-13
+            asset_name: gitfetch-macos-x86_64
+          - os: macos-latest
+            asset_name: gitfetch-macos-arm64
+          - os: windows-latest
+            asset_name: gitfetch-windows-x86_64.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build binary with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --name ${{ matrix.asset_name }} \
+            --distpath ./dist \
+            --paths src \
+            --hidden-import readchar \
+            --hidden-import webcolors \
+            --hidden-import requests \
+            --copy-metadata readchar \
+            --copy-metadata webcolors \
+            --copy-metadata requests \
+            run.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ./dist/${{ matrix.asset_name }}*
+
+  # ──────────────────────────────────────────
+  # 2. Create GitHub Release and attach assets
+  # ──────────────────────────────────────────
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$GITHUB_REF_NAME" >> $GITHUB_OUTPUT
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./dist
+
+      - name: Generate checksums
+        run: |
+          cd ./dist
+          find . -type f -exec shasum -a 256 {} \; > checksums.txt
+          cd ..
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md \
+              | sed '/./,$!d' > release_body.md
+          fi
+          if [ ! -s release_body.md ]; then
+            echo "No unreleased changelog entries found. Using default."
+            echo "## gitfetch v${{ steps.version.outputs.version }}" > release_body.md
+            echo "" >> release_body.md
+            echo "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." >> release_body.md
+          fi
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat release_body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: v${{ steps.version.outputs.version }}
+          body: ${{ steps.notes.outputs.body }}
+          files: |
+            ./dist/*/gitfetch-*
+            ./dist/checksums.txt
+          fail_on_unmatched_files: false
+
+  # ──────────────────────────────────────────
+  # 3. Update Homebrew tap
+  # ──────────────────────────────────────────
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ vars.HOMEBREW_TAP_REPO != '' }}
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          path: gitfetch
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          cd homebrew-tap
+          chmod +x .github/scripts/update-homebrew.sh
+          VERSION=${{ steps.version.outputs.version }} ./.github/scripts/update-homebrew.sh
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/gitfetch.rb
+          git commit -m "Update gitfetch to v${{ steps.version.outputs.version }}"
+          git push
