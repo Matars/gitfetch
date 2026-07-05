@@ -42,6 +42,7 @@ jobs:
           pip install -e .
 
       - name: Build binary with PyInstaller
+        shell: bash
         run: |
           pyinstaller \
             --onefile \
