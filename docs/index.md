@@ -76,4 +76,4 @@ nav_order: 1
   </div>
 </div>
 
-> **Note**: This project is still maturing with only ~20 closed issues as of October 26, 2025. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues) on GitHub!
+> **Note**: This project is still maturing. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues) on GitHub!

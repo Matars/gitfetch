@@ -26,8 +26,43 @@ custom_box = ■
 - `provider`: Git hosting provider (github, gitlab, gitea, sourcehut)
 - `provider_url`: API URL for the provider
 - `custom_box`: Character used for contribution blocks (default: ■)
+- `show_date`: Show month/date labels (true/false, default: true)
 
 **Note**: Custom graph dimensions (`--width`, `--height`) and section visibility flags (`--no-*`) are command-line only and not saved in the configuration file.
+
+## Per-Provider Sections
+
+Each provider has its own section with connection details:
+
+```ini
+[github]
+username = yourusername
+url = https://api.github.com
+token = ghp_xxxxxxxxxxxx
+
+[gitlab]
+username = yourusername
+url = https://gitlab.com
+token = glpat_xxxxxxxxxxxx
+
+[gitea]
+username = yourusername
+url =
+token =
+
+[sourcehut]
+username = yourusername
+url = https://git.sr.ht
+token = srht_xxxxxxxxxxxx
+```
+
+If a provider section is empty, gitfetch falls back to the `[DEFAULT]` section values and environment variables.
+
+### Token Resolution Priority
+
+1. Token from the per-provider section (e.g. `[github]` → `token`)
+2. Token from the `[DEFAULT]` section `token` field (backward compatibility)
+3. Environment variable (see [providers](providers.md) for variable names)
 
 ## [COLORS] Section
 

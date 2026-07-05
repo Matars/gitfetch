@@ -4,7 +4,7 @@
 
 A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut statistics. Display your profile and stats from various git hosting platforms in a beautiful, colorful terminal interface with extensive customization options and intelligent layout adaptation.
 
-> **Note**: This project is still maturing with only ~30 closed issues as of November 1st, 2025. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues).
+> **Note**: This project is still maturing. If you encounter bugs, have feature requests, or want to contribute, please [open an issue](https://github.com/Matars/gitfetch/issues).
 
 <table>
   <tr>
@@ -25,6 +25,21 @@ A neofetch-style CLI tool for GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sour
 
 ## Quick Install
 
+### Standalone Binary
+
+Download from the [latest release](https://github.com/Matars/gitfetch/releases/latest):
+
+| Platform | Asset |
+|----------|-------|
+| Linux x86_64 | `gitfetch-linux-x86_64` |
+| macOS (Apple Silicon) | `gitfetch-macos-arm64` |
+| Windows x86_64 | `gitfetch-windows-x86_64.exe` |
+
+```bash
+chmod +x gitfetch-*
+./gitfetch-linux-x86_64
+```
+
 ### macOS (Homebrew)
 
 ```bash
@@ -40,8 +55,6 @@ yay -S gitfetch-python
 
 ### From Source with pip
 
-Make sure you have pip installed, then run:
-
 ```bash
 git clone https://github.com/Matars/gitfetch.git
 cd gitfetch
@@ -53,31 +66,36 @@ make dev
 - Neofetch-style display with ASCII art
 - Comprehensive statistics from multiple git hosting platforms
 - Encourages maintaining commit streaks
-- Get PR's and issues quick view in terminal
+- Get PRs and issues quick view in terminal
+- Local repository analysis (`gitfetch --local`)
+- Git timeline view (`gitfetch --graph-timeline`)
+- Text and shape simulation (`--text`, `--shape`)
 - Smart SQLite-based caching system
-- Cross-platform support (macOS and Linux)
+- Cross-platform support (macOS, Linux, Windows)
 - Extensive customization options
 
 ## Supported Platforms
 
-- **GitHub** - Uses GitHub CLI (gh) for authentication
-- **GitLab** - Uses GitLab CLI (glab) for authentication
+- **GitHub** - Uses GitHub CLI (gh) or personal access token
+- **GitLab** - Uses GitLab CLI (glab) or personal access token
 - **Gitea/Forgejo/Codeberg** - Uses personal access tokens
 - **Sourcehut** - Uses personal access tokens
 
 ## Uninstall
 
 ```bash
-brew uninstall gitfetch          # Homebrew
-brew untap matars/gitfetch     # Remove the Homebrew tap
-```
+# Standalone binary
+rm gitfetch-linux-x86_64
 
-```bash
-pip uninstall gitfetch          # pip
-```
+# Homebrew
+brew uninstall gitfetch
+brew untap matars/gitfetch
 
-```bash
-yay -R gitfetch-python          # AUR (yay)
+# pip
+pip uninstall gitfetch
+
+# AUR
+yay -R gitfetch-python
 ```
 
 ## License

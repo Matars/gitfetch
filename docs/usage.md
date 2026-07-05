@@ -13,9 +13,12 @@ gitfetch brings the magic of neofetch to your git hosting platforms, displaying 
 - **Neofetch-style display** with stunning ASCII art that brings your stats to life
 - **Comprehensive statistics** from GitHub, GitLab, Gitea, Forgejo, Codeberg, and Sourcehut
 - **Smart SQLite-based caching** system for lightning-fast subsequent runs
-- **Cross-platform support** (macOS and Linux) - works wherever you code
+- **Cross-platform support** (macOS, Linux, and Windows) - works wherever you code
 - **View active pull requests and issues** - stay on top of your contributions
 - **Display commit streak information** - track your coding momentum
+- **Local repository analysis** - show contribution graphs from your local `.git`
+- **Git timeline view** - visualize commit history over time
+- **ASCII art simulation** - create pixel art from text or use predefined shapes
 - **Extensive customization** options that let you make it truly yours
 
 ## Visual Customization
@@ -60,20 +63,23 @@ Display contribution statistics for the current local git repository:
 gitfetch --local
 ```
 
-Shows commit activity over the last year, built from local git history
+Shows commit activity over the last year, built from local git history. No internet or authentication needed — just a local `.git` directory.
+
+**Current Limitations:**
+- No repository metadata (stars, forks, issues, etc.)
+- No language statistics for the repository
+- Limited to local git history analysis
+- Achievements and streaks are calculated from local commits only
+
+## Git Timeline
+
+Show a git commit timeline instead of the contribution graph:
 
 ```bash
 gitfetch --graph-timeline
 ```
 
-Displays git commit timeline, built from local git history
-
-**Current Limitations:**
-
-- Only shows contribution graph and timeline
-- No repository metadata (stars, forks, issues, etc.)
-- No language statistics for the repository
-- Limited to local git history analysis
+Works with both remote and local mode. When combined with `--local`, the timeline is built from your local `.git` history.
 
 ## Configuration
 
@@ -149,6 +155,17 @@ gitfetch --no-pr               # Hide pull requests
 gitfetch --no-account          # Hide account info
 gitfetch --no-grid             # Hide contribution grid
 ```
+
+### Text Simulation
+
+Display text as a contribution graph pattern:
+
+```bash
+gitfetch --text "HELLO"
+gitfetch --text "GIT"
+```
+
+Text is rendered using pixel font patterns. Only uppercase letters, digits, and some symbols are supported.
 
 ### Combined Options
 

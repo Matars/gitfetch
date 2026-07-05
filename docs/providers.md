@@ -10,9 +10,9 @@ gitfetch supports multiple Git hosting platforms with different authentication m
 
 ## GitHub
 
-**Authentication**: Uses GitHub CLI (gh)
+**Authentication**: Uses GitHub CLI (gh) or personal access token
 
-**Setup**:
+**Setup (CLI)**:
 
 1. Install GitHub CLI: `brew install gh` (macOS) or follow [official instructions](https://cli.github.com/)
 2. Run `gh auth login` to authenticate
@@ -31,9 +31,9 @@ You can also set a token via:
 
 ## GitLab
 
-**Authentication**: Uses GitLab CLI (glab)
+**Authentication**: Uses GitLab CLI (glab) or personal access token
 
-**Setup**:
+**Setup (CLI)**:
 
 1. Install GitLab CLI: `brew install glab` (macOS) or follow [official instructions](https://gitlab.com/gitlab-org/cli)
 2. Run `glab auth login` to authenticate
@@ -55,6 +55,11 @@ You can also set a token via:
 2. During gitfetch setup, select Gitea/Forgejo/Codeberg
 3. Enter your instance URL and personal access token
 
+**Token Configuration**:
+
+- Config file: set `token` in `[gitea]` section
+- Environment variable: `GITEA_TOKEN`
+
 **Supported Instances**:
 
 - Gitea (any instance)
@@ -70,6 +75,11 @@ You can also set a token via:
 1. Generate an OAuth2 personal access token in your [account settings](https://meta.sr.ht/oauth2)
 2. During gitfetch setup, select Sourcehut
 3. Enter your personal access token
+
+**Token Configuration**:
+
+- Config file: set `token` in `[sourcehut]` section
+- Environment variable: `SOURCEHUT_TOKEN`
 
 ## Provider Configuration
 

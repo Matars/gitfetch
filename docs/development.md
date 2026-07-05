@@ -21,6 +21,17 @@ make dev      # Install in development mode (editable install)
 make test     # Run tests with pytest
 ```
 
+## Building Binaries
+
+Standalone executables are built automatically on release via GitHub Actions.
+To build locally:
+
+```bash
+pip install pyinstaller
+pip install -e .
+pyinstaller --onefile --name gitfetch --paths src run.py
+```
+
 ## Development Workflow
 
 1. Clone the repository
@@ -32,18 +43,24 @@ make test     # Run tests with pytest
 
 ```
 gitfetch/
-├── src/gitfetch/          # Main package
+├── .github/workflows/    # CI/CD workflows (ci, release, pages)
+├── src/gitfetch/         # Main package
 │   ├── __init__.py
 │   ├── cli.py            # Command line interface
 │   ├── config.py         # Configuration handling
 │   ├── cache.py          # SQLite caching
 │   ├── fetcher.py        # API data fetching
 │   ├── display.py        # Terminal display logic
+│   ├── providers.py      # Provider definitions
 │   └── text_patterns.py  # ASCII art patterns
 ├── tests/                # Unit tests
+├── docs/                 # Documentation site
+├── run.py                # PyInstaller entry point
 ├── pyproject.toml        # Project configuration
-├── setup.py             # Setup script
-└── Makefile             # Development tasks
+├── setup.py              # Setup script
+├── Makefile              # Development tasks
+├── flake.nix / flake.lock # Nix flake
+└── CHANGELOG.md          # Release changelog
 ```
 
 ## Contributing

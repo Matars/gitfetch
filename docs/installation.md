@@ -6,7 +6,25 @@ nav_order: 3
 
 # Installation
 
-gitfetch can be installed on macOS and Linux without any prerequisites. During first-run setup, you'll be guided to install and authenticate with the necessary CLI tools or provide access tokens for your chosen git hosting platform.
+gitfetch can be installed on macOS, Linux, and Windows. During first-run setup, you'll be guided to install and authenticate with the necessary CLI tools or provide access tokens for your chosen git hosting platform.
+
+## Quick Install (Standalone Binary)
+
+Download the latest binary for your platform from the [releases page](https://github.com/Matars/gitfetch/releases/latest):
+
+| Platform | Asset |
+|----------|-------|
+| Linux x86_64 | `gitfetch-linux-x86_64` |
+| macOS (Apple Silicon) | `gitfetch-macos-arm64` |
+| Windows x86_64 | `gitfetch-windows-x86_64.exe` |
+
+```bash
+# Linux / macOS
+chmod +x gitfetch-*
+./gitfetch-linux-x86_64
+```
+
+No Python, no package manager required.
 
 ## macOS (Homebrew)
 
@@ -126,6 +144,12 @@ When you run `gitfetch` for the first time, you'll be prompted to:
 The setup process will provide helpful error messages and installation instructions if anything is missing.
 
 ## Uninstall
+
+### Standalone Binary
+
+```bash
+rm gitfetch-linux-x86_64   # or whichever binary you downloaded
+```
 
 ### Homebrew
 
