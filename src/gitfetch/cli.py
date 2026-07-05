@@ -219,12 +219,54 @@ def main() -> int:
     try:
         args = parse_args()
 
-        # Check for --local flag
+        # Check for --local flag (must come before config init)
         if args.local:
             import os
             if not os.path.exists('.git'):
                 print("Error: --local requires .git folder", file=sys.stderr)
                 return 1
+
+            # Local mode: no config, no remote API — read from .git directly
+            from .fetcher import BaseFetcher
+
+            config_manager = ConfigManager()
+            formatter = DisplayFormatter(
+                config_manager,
+                custom_box=args.custom_box,
+                show_date=not args.no_date,
+                graph_only=args.graph_only,
+                show_achievements=not args.no_achievements,
+                show_languages=not args.no_languages,
+                show_issues=not args.no_issues,
+                show_pr=not args.no_pr,
+                show_account=not args.no_account,
+                show_grid=not args.no_grid,
+                custom_width=args.width,
+                custom_height=args.height,
+                graph_timeline=args.graph_timeline,
+                local_mode=True,
+            )
+            spaced = True
+            if args.spaced:
+                spaced = True
+            elif args.not_spaced:
+                spaced = False
+
+            weeks = BaseFetcher._build_contribution_graph_from_git()
+            if not weeks:
+                print("No contributions found in local repository.")
+                return 0
+
+            stats = {'contribution_graph': weeks}
+            repo_name = os.path.basename(os.path.abspath('.'))
+            user_data = {
+                'name': repo_name,
+                'bio': 'local repository',
+                'website': '',
+            }
+
+            formatter.display(repo_name, user_data, stats, spaced=spaced)
+            return 0
 
         # Handle background refresh mode (hidden feature)
         if args.background_refresh:

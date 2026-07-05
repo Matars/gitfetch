@@ -533,14 +533,6 @@ class DisplayFormatter:
                 return ["No text to display"]
             weeks_data = self._generate_weeks_from_text_grid(text_grid)
 
-        if self.local_mode:
-            try:
-                weeks_data = self._get_local_contribution_weeks()
-            except Exception as e:
-                return [f"Error getting local contributions: {e}"]
-        else:
-            weeks_data = weeks_data
-
         recent_weeks = self._get_recent_weeks(weeks_data)
         total_contribs = self._calculate_total_contributions(recent_weeks)
 
