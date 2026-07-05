@@ -99,8 +99,14 @@ jobs:
         id: notes
         run: |
           if [ -f CHANGELOG.md ]; then
+            # Try [Unreleased] section first
             awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md \
               | sed '/./,$!d' > release_body.md
+            # If empty, try the first versioned section (e.g. [1.4.0])
+            if [ ! -s release_body.md ]; then
+              awk '/^## \[[0-9]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md \
+                | sed '/./,$!d' > release_body.md
+            fi
           fi
           if [ ! -s release_body.md ]; then
             echo "No unreleased changelog entries found. Using default."
